@@ -1,5 +1,6 @@
 venv/
 models/
 doc/encrypted/
+doc/comfyUI/
 output/
 __pycache__/

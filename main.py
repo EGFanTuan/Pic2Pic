@@ -136,11 +136,16 @@ def main():
         safety_checker=None
     )
 
-    print("Initializing Img2Img pipeline...")
+    print("Initializing Img2Img pipelines...")
+    # Stage 1: scribble + canny (same as workflow before LCM KSampler)
     pipe_i2i = StableDiffusionControlNetImg2ImgPipeline(**pipe.components)
+    # Stage 2: scribble only (same as workflow before DPMPP KSampler)
+    pipe_i2i_stage2 = StableDiffusionControlNetImg2ImgPipeline(**pipe.components)
+    pipe_i2i_stage2.controlnet = controlnet_scribble
 
     pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)  # type: ignore
     pipe_i2i.scheduler = pipe.scheduler
+    pipe_i2i_stage2.scheduler = pipe.scheduler
 
     if device == "cuda":
         # 释放现代 N卡 (Ampere架构及以上, 如 RTX 30/40系) 的 TF32 并发性能
@@ -149,21 +154,25 @@ def main():
         
         pipe = pipe.to(device)
         pipe_i2i = pipe_i2i.to(device)
+        pipe_i2i_stage2 = pipe_i2i_stage2.to(device)
         try:
             pipe.enable_xformers_memory_efficient_attention()
             pipe_i2i.enable_xformers_memory_efficient_attention()
+            pipe_i2i_stage2.enable_xformers_memory_efficient_attention()
         except (ImportError, ModuleNotFoundError, ValueError):
             print("xformers不在线 - 退回到 PyTorch 2.0 极速原生 SDPA 注意力机制，不使用龟速切片")
         
         # 开启 VAE 及模型的显存重切片/Tiling策略 (有效拉低出图瞬间的峰值显存占用, 且影响极小的时间)
         pipe.vae.enable_tiling()
         pipe_i2i.vae.enable_tiling()
+        pipe_i2i_stage2.vae.enable_tiling()
         # 仅推荐在显存极小(如≤6GB)时开启如下两行CPU自动卸载，否则保持常驻显存可保证连续出图最快
         # pipe.enable_model_cpu_offload()
         # pipe_i2i.enable_model_cpu_offload()
     else:
         pipe = pipe.to(device)
         pipe_i2i = pipe_i2i.to(device)
+        pipe_i2i_stage2 = pipe_i2i_stage2.to(device)
 
     input_images = get_input_images(args.input_dir)
     print(f"Found {len(input_images)} input images in {args.input_dir}")
@@ -182,7 +191,7 @@ def main():
         control_image_inverted = ImageOps.invert(control_image.convert("RGB"))
         control_image_processed = preprocess_image(control_image_inverted)
 
-        control_images = [control_image_processed, control_image_processed]
+        control_images_stage1 = [control_image_processed, control_image_processed]
         
         generator = torch.Generator(device=device).manual_seed(42)
 
@@ -193,17 +202,25 @@ def main():
             # Stage 1: LCM with both ControlNets
             pipe_i2i.scheduler = LCMScheduler.from_config(pipe_i2i.scheduler.config)  # type: ignore
             control_scales_stage1 = [args.scribble_scale_stage1, args.canny_scale_stage1]
-            
-            blank_image = Image.new("RGB", (args.width, args.height), (127, 127, 127))
+
+            # Use pure noise latent as stage-1 input (matches EmptyLatentImage + KSampler flow)
+            latent_h = args.height // 8
+            latent_w = args.width // 8
+            noise_latents = torch.randn(
+                (1, pipe_i2i.unet.config.in_channels, latent_h, latent_w),
+                generator=generator,
+                device=device,
+                dtype=pipe_i2i.unet.dtype
+            )
             
             with torch.no_grad():
                 output_stage1 = pipe_i2i(
                     prompt=positive_prompt,
                     negative_prompt=negative_prompt,
-                    image=blank_image,
-                    control_image=control_images,
+                    image=noise_latents,
+                    control_image=control_images_stage1,
                     controlnet_conditioning_scale=control_scales_stage1,
-                    num_inference_steps=int(args.lcm_steps / args.lcm_denoise),
+                    num_inference_steps=args.lcm_steps,
                     strength=args.lcm_denoise,
                     guidance_scale=args.lcm_guidance_scale,
                     generator=generator,
@@ -221,34 +238,26 @@ def main():
                 scale_factor=args.latent_scale_factor,
                 mode='nearest-exact'
             )
-            
-            with torch.no_grad():
-                upscaled_image_pt = pipe.vae.decode(latents_upscaled / pipe.vae.config.scaling_factor, return_dict=False)[0]
-                upscaled_image_pt = (upscaled_image_pt / 2 + 0.5).clamp(0, 1)
-                upscaled_image_np = upscaled_image_pt.cpu().permute(0, 2, 3, 1).numpy()
-                upscaled_image_pil = pipe.numpy_to_pil(upscaled_image_np)[0]
 
-            # Stage 2: DPMPP with only scribble ControlNet
-            print(f"Stage 2: DPMPP with {args.dpmpp_steps} steps, guidance={args.dpmpp_guidance_scale}, denoise={args.dpmpp_denoise}")
-            pipe_i2i.scheduler = DPMSolverMultistepScheduler.from_config(
-                pipe_i2i.scheduler.config,  # type: ignore
+            # Stage 2: DPMPP with only scribble ControlNet (canny not used here)
+            print(f"Stage 2: DPMPP with {args.dpmpp_steps} steps, guidance={args.dpmpp_guidance_scale}, denoise={args.dpmpp_denoise}, canny=0")
+            pipe_i2i_stage2.scheduler = DPMSolverMultistepScheduler.from_config(
+                pipe_i2i_stage2.scheduler.config,  # type: ignore
                 use_karras_sigmas=True
             )
-            # Only use scribble ControlNet for stage 2 (set canny scale to 0)
-            control_scales_stage2 = [args.scribble_scale_stage2, 0.0]
             
             new_width = int(args.width * args.latent_scale_factor)
             new_height = int(args.height * args.latent_scale_factor)
-            control_images_stage2 = [img.resize((new_width, new_height)) for img in control_images]
+            control_image_stage2 = control_image_processed.resize((new_width, new_height))
             
             with torch.no_grad():
-                output_stage2 = pipe_i2i(
+                output_stage2 = pipe_i2i_stage2(
                     prompt=positive_prompt,
                     negative_prompt=negative_prompt,
-                    image=upscaled_image_pil,
-                    control_image=control_images_stage2,
-                    controlnet_conditioning_scale=control_scales_stage2,
-                    num_inference_steps=int(args.dpmpp_steps / args.dpmpp_denoise),
+                    image=latents_upscaled,
+                    control_image=control_image_stage2,
+                    controlnet_conditioning_scale=args.scribble_scale_stage2,
+                    num_inference_steps=args.dpmpp_steps,
                     strength=args.dpmpp_denoise,
                     guidance_scale=args.dpmpp_guidance_scale,
                     generator=generator,
@@ -264,7 +273,7 @@ def main():
                 output = pipe(
                     prompt=positive_prompt,
                     negative_prompt=negative_prompt,
-                    image=control_images,
+                    image=control_images_stage1,
                     controlnet_conditioning_scale=control_scales,
                     num_inference_steps=args.steps,
                     guidance_scale=args.guidance_scale,
