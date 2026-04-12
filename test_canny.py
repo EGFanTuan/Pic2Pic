@@ -2,14 +2,14 @@ import os
 import cv2
 import numpy as np
 from PIL import Image
-from src.image_utils import get_input_images, invert_image, SUPPORTED_INPUT_FORMATS
+from src.image_utils import getInputImages, invertImage, SUPPORTED_INPUT_FORMATS
 
 def main():
     input_dir = "./input"
     output_dir = "./output/canny_test"
     os.makedirs(output_dir, exist_ok=True)
 
-    input_images = get_input_images(input_dir)
+    input_images = getInputImages(input_dir)
     if not input_images:
         print(f"No images found in {input_dir}")
         return
@@ -20,7 +20,7 @@ def main():
     
     # 读取并反转（模拟 main.py 中的逻辑：黑底白线 -> 白底黑线）
     image = Image.open(test_img_path)
-    image = invert_image(image)
+    image = invertImage(image)
     image_np = np.array(image.convert("RGB"))
 
     # 定义测试的阈值组合
