@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pic2Pic 输入画布原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7fb;
+      --panel: #ffffff;
+      --text: #20252d;
+      --sub: #606a78;
+      --line: #e7eaf0;
+      --primary: #3a7afe;
+      --danger: #d83b45;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+
+    .app {
+      width: min(100%, 820px);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 10px 24px rgba(20, 28, 43, 0.08);
+      padding: 16px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: .15s;
+    }
+
+    button:hover { transform: translateY(-1px); }
+
+    button.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    .danger {
+      color: var(--danger);
+      border-color: #f0c8cc;
+      background: #fff7f8;
+    }
+
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--sub);
+    }
+
+    input[type="range"] {
+      width: 140px;
+    }
+
+    .canvas-wrap {
+      width: 400px;
+      margin: 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    canvas {
+      display: block;
+      width: 400px;
+      height: 600px;
+      touch-action: none;
+      cursor: crosshair;
+      background: #fff;
+    }
+
+    .hint {
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--sub);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="toolbar">
+      <button id="drawBtn" class="active" type="button">画笔</button>
+      <button id="eraserBtn" type="button">橡皮擦</button>
+      <button id="undoBtn" type="button">撤销</button>
+      <button id="clearBtn" class="danger" type="button">清空</button>
+      <button id="downloadBtn" type="button">下载 PNG</button>
+
+      <label>
+        线宽
+        <input id="sizeRange" type="range" min="1" max="30" value="4" />
+        <span id="sizeText">4</span>
+      </label>
+    </div>
+
+    <div class="canvas-wrap">
+      <canvas id="sketch" width="400" height="600" aria-label="输入线稿画布"></canvas>
+    </div>
+
+    <p class="hint">建议导出后放到项目的 <code>input/</code> 目录，供 <code>main.py</code> 读取。</p>
+  </main>
+
+  <script>
+    const canvas = document.getElementById('sketch');
+    const ctx = canvas.getContext('2d');
+
+    const drawBtn = document.getElementById('drawBtn');
+    const eraserBtn = document.getElementById('eraserBtn');
+    const undoBtn = document.getElementById('undoBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const sizeRange = document.getElementById('sizeRange');
+    const sizeText = document.getElementById('sizeText');
+
+    let mode = 'draw';
+    let drawing = false;
+    let lineWidth = Number(sizeRange.value);
+    const history = [];
+
+    function setCanvasDefaults() {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = lineWidth;
+    }
+
+    function snapshot() {
+      // 保存当前状态用于撤销
+      history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+      if (history.length > 50) history.shift();
+    }
+
+    function undo() {
+      if (history.length === 0) return;
+      const imageData = history.pop();
+      if (imageData) {
+        ctx.putImageData(imageData, 0, 0);
+      }
+    }
+
+    function setMode(nextMode) {
+      mode = nextMode;
+      drawBtn.classList.toggle('active', mode === 'draw');
+      eraserBtn.classList.toggle('active', mode === 'erase');
+    }
+
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+      return { x, y };
+    }
+
+    function startDraw(e) {
+      e.preventDefault();
+      snapshot();
+      drawing = true;
+      const { x, y } = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    }
+
+    function draw(e) {
+      if (!drawing) return;
+      e.preventDefault();
+
+      const { x, y } = getPos(e);
+      ctx.lineWidth = lineWidth;
+
+      if (mode === 'erase') {
+        ctx.globalCompositeOperation = 'destination-out';
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = '#000000';
+      }
+
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
+
+    function endDraw() {
+      if (!drawing) return;
+      drawing = false;
+      ctx.closePath();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    function clearCanvas() {
+      snapshot();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function downloadPng() {
+      const link = document.createElement('a');
+      link.download = 'scribble_input.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+
+    drawBtn.addEventListener('click', () => setMode('draw'));
+    eraserBtn.addEventListener('click', () => setMode('erase'));
+    undoBtn.addEventListener('click', undo);
+    clearBtn.addEventListener('click', clearCanvas);
+    downloadBtn.addEventListener('click', downloadPng);
+
+    sizeRange.addEventListener('input', () => {
+      lineWidth = Number(sizeRange.value);
+      sizeText.textContent = String(lineWidth);
+    });
+
+    canvas.addEventListener('pointerdown', startDraw);
+    canvas.addEventListener('pointermove', draw);
+    window.addEventListener('pointerup', endDraw);
+    window.addEventListener('pointercancel', endDraw);
+
+    setCanvasDefaults();
+  </script>
+</body>
+</html>
