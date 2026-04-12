@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pic2Pic Web UI</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --panel: #ffffff;
+      --line: #e6ebf2;
+      --text: #1f2937;
+      --sub: #5b6472;
+      --primary: #3a7afe;
+      --danger: #e44c4c;
+      --ok: #1da672;
+      --warn: #d98a00;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .layout {
+      max-width: 1460px;
+      margin: 18px auto;
+      padding: 0 14px;
+      display: grid;
+      grid-template-columns: 560px 1fr;
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(20, 34, 60, 0.06);
+      overflow: hidden;
+    }
+
+    .card h2 {
+      margin: 0;
+      font-size: 16px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcff;
+    }
+
+    .section {
+      padding: 12px 14px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 8px;
+      padding: 7px 10px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    button:hover { transform: translateY(-1px); }
+
+    button.primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    button.danger {
+      color: var(--danger);
+      border-color: #f5cccc;
+      background: #fff7f7;
+    }
+
+    button.active {
+      background: #edf3ff;
+      border-color: #b6ccff;
+      color: #1443af;
+    }
+
+    button:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .canvas-wrap {
+      width: 800px;
+      max-width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: auto;
+      margin: 0 auto;
+      background: white;
+    }
+
+    canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      touch-action: none;
+      cursor: crosshair;
+      background: #fff;
+    }
+
+    .mode-switch {
+      display: inline-flex;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    .mode-switch button {
+      border: none;
+      border-right: 1px solid var(--line);
+      border-radius: 0;
+      background: #fff;
+      padding: 7px 12px;
+    }
+
+    .mode-switch button:last-child {
+      border-right: none;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .note {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--sub);
+      line-height: 1.4;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .field label {
+      font-size: 12px;
+      color: var(--sub);
+    }
+
+    .field input, .field textarea, .field select {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 9px;
+      font-size: 13px;
+      font-family: inherit;
+    }
+
+    .field textarea {
+      min-height: 74px;
+      resize: vertical;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    .status {
+      font-size: 13px;
+      margin-top: 8px;
+      color: var(--sub);
+    }
+
+    .status.ok { color: var(--ok); }
+    .status.warn { color: var(--warn); }
+    .status.err { color: var(--danger); }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+
+    .img-box {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .img-box .title {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+      font-size: 12px;
+      color: var(--sub);
+      background: #fcfdff;
+    }
+
+    .img-box img {
+      width: 100%;
+      display: block;
+      min-height: 180px;
+      object-fit: contain;
+      background: #fafbff;
+    }
+
+    .small {
+      font-size: 12px;
+      color: var(--sub);
+    }
+
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      .canvas-wrap { width: min(100%, 800px) !important; }
+      canvas { width: 100%; height: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <section class="card">
+      <h2>输入草图（400×600）</h2>
+      <div class="section">
+        <div class="toolbar">
+          <button id="drawBtn" class="active" type="button">画笔</button>
+          <button id="eraserBtn" type="button">橡皮擦</button>
+          <button id="undoBtn" type="button">撤销</button>
+          <button id="clearBtn" class="danger" type="button">清空</button>
+          <button id="downloadBtn" type="button">下载草图</button>
+        </div>
+
+        <div class="toolbar">
+          <label class="small">线宽 <span id="sizeValue">1.0</span></label>
+          <input id="sizeRange" type="range" min="0.1" max="30" value="1" step="0.1" />
+          <button id="uploadBtn" type="button">载入本地图片</button>
+          <input id="uploadInput" type="file" accept="image/*" style="display:none" />
+        </div>
+
+        <div id="canvasWrap" class="canvas-wrap">
+          <canvas id="sketch" width="400" height="600"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>生成控制与结果</h2>
+      <div class="section">
+        <div class="mode-switch" role="tablist" aria-label="参数模式">
+          <button id="basicModeBtn" class="active" type="button">普通模式</button>
+          <button id="advancedModeBtn" type="button">高级模式</button>
+        </div>
+
+        <div class="field-grid">
+          <div class="field full">
+            <label for="prompt">Prompt</label>
+            <textarea id="prompt">masterpiece, best quality, anime style</textarea>
+          </div>
+          <div class="field full">
+            <label for="negativePrompt">Negative Prompt</label>
+            <textarea id="negativePrompt">not safe fot work, not suitable for work, NSFW, worst quality, low quality, blurry, bad anatomy, bad hands, words, text</textarea>
+          </div>
+
+          <div class="field"><label>宽度</label><input id="width" type="number" value="400" min="64" step="8" /></div>
+          <div class="field"><label>高度</label><input id="height" type="number" value="600" min="64" step="8" /></div>
+          <div class="field"><label>Seed</label><input id="seed" type="number" value="143" /></div>
+          <div class="field"><label>输出格式</label><select id="outputFormat"><option>png</option><option>jpg</option><option>jpeg</option><option>webp</option><option>bmp</option></select></div>
+
+          <div id="canvasWarning" class="field full status warn hidden"></div>
+
+          <div id="basicFields" class="field full">
+            <label for="qualityPreset">ControlNet强度</label>
+            <select id="qualityPreset">
+              <option value="Noob">Noob（这会为unet留足发挥空间）</option>
+              <option value="Normal" selected>Normal（平衡您的想法与新的创意）</option>
+              <option value="Hardcore">Hardcore（画面由您主导）</option>
+              <option value="God">God（您将作为达芬奇）</option>
+            </select>
+            <div class="note">普通模式会自动设置三项关键控制强度（S1 Scribble / S1 Canny / S2 Scribble）。</div>
+          </div>
+
+          <div id="advancedFields" class="field full hidden">
+            <div class="field-grid">
+              <div class="field"><label>LCM Steps</label><input id="lcmSteps" type="number" value="4" min="1" /></div>
+              <div class="field"><label>LCM Guidance</label><input id="lcmGuidance" type="number" value="2.5" step="0.1" /></div>
+              <div class="field"><label>LCM Denoise</label><input id="lcmDenoise" type="number" value="0.9" step="0.05" /></div>
+              <div class="field"><label>Latent Scale</label><input id="latentScale" type="number" value="1.5" step="0.1" /></div>
+
+              <div class="field"><label>Scribble Scale S1</label><input id="scribbleScale1" type="number" value="0.9" step="0.05" /></div>
+              <div class="field"><label>Canny Scale S1</label><input id="cannyScale1" type="number" value="0.4" step="0.05" /></div>
+              <div class="field"><label>DPMPP Steps</label><input id="dpmppSteps" type="number" value="35" min="1" /></div>
+              <div class="field"><label>DPMPP Guidance</label><input id="dpmppGuidance" type="number" value="8.0" step="0.1" /></div>
+              <div class="field"><label>DPMPP Denoise</label><input id="dpmppDenoise" type="number" value="0.6" step="0.05" /></div>
+              <div class="field"><label>Scribble Scale S2</label><input id="scribbleScale2" type="number" value="0.9" step="0.05" /></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="toolbar" style="margin-top: 12px;">
+          <button id="generateBtn" class="primary" type="button">生成</button>
+          <button id="syncStatusBtn" type="button">刷新状态</button>
+        </div>
+
+        <div id="statusText" class="status">状态：等待中</div>
+        <div id="resultMeta" class="small"></div>
+      </div>
+
+      <div class="section">
+        <div class="result-grid">
+          <div class="img-box">
+            <div class="title">Stage1 预览</div>
+            <img id="stage1Preview" alt="stage1 preview" />
+          </div>
+          <div class="img-box">
+            <div class="title">Final 输出</div>
+            <img id="finalPreview" alt="final output" />
+          </div>
+          <div class="img-box">
+            <div class="title">Canny</div>
+            <img id="cannyPreview" alt="canny preview" />
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('sketch');
+  const canvasWrap = document.getElementById('canvasWrap');
+    const ctx = canvas.getContext('2d');
+
+    const drawBtn = document.getElementById('drawBtn');
+    const eraserBtn = document.getElementById('eraserBtn');
+    const undoBtn = document.getElementById('undoBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const uploadInput = document.getElementById('uploadInput');
+    const sizeRange = document.getElementById('sizeRange');
+    const sizeValue = document.getElementById('sizeValue');
+
+    const generateBtn = document.getElementById('generateBtn');
+    const syncStatusBtn = document.getElementById('syncStatusBtn');
+    const statusText = document.getElementById('statusText');
+    const resultMeta = document.getElementById('resultMeta');
+  const basicModeBtn = document.getElementById('basicModeBtn');
+  const advancedModeBtn = document.getElementById('advancedModeBtn');
+  const basicFields = document.getElementById('basicFields');
+  const advancedFields = document.getElementById('advancedFields');
+  const qualityPreset = document.getElementById('qualityPreset');
+  const canvasWarning = document.getElementById('canvasWarning');
+
+  const widthInput = document.getElementById('width');
+  const heightInput = document.getElementById('height');
+  const seedInput = document.getElementById('seed');
+  const outputFormatInput = document.getElementById('outputFormat');
+
+  const promptInput = document.getElementById('prompt');
+  const negativePromptInput = document.getElementById('negativePrompt');
+
+  const lcmStepsInput = document.getElementById('lcmSteps');
+  const lcmGuidanceInput = document.getElementById('lcmGuidance');
+  const lcmDenoiseInput = document.getElementById('lcmDenoise');
+  const latentScaleInput = document.getElementById('latentScale');
+  const scribbleScale1Input = document.getElementById('scribbleScale1');
+  const cannyScale1Input = document.getElementById('cannyScale1');
+  const dpmppStepsInput = document.getElementById('dpmppSteps');
+  const dpmppGuidanceInput = document.getElementById('dpmppGuidance');
+  const dpmppDenoiseInput = document.getElementById('dpmppDenoise');
+  const scribbleScale2Input = document.getElementById('scribbleScale2');
+
+    const stage1Preview = document.getElementById('stage1Preview');
+    const cannyPreview = document.getElementById('cannyPreview');
+    const finalPreview = document.getElementById('finalPreview');
+
+    let mode = 'draw';
+    let drawing = false;
+    let lineWidth = Number.parseFloat(sizeRange.value);
+    const history = [];
+    let previewTimer = null;
+    let previewInFlight = false;
+    let pendingPreview = false;
+    let settingsMode = 'basic';
+    const PREVIEW_DEBOUNCE_MS = 2000;
+    const CANVAS_DISPLAY_SCALE = 1.3;
+
+    const PRESET_SCALES = {
+      'Noob': [0.6, 0.3, 0.5],
+      'Normal': [0.8, 0.5, 0.8],
+      'Hardcore': [1.1, 0.7, 1.1],
+      'God': [1.3, 0.9, 1.3]
+    };
+
+    function setStatus(text, cls = '') {
+      statusText.className = `status ${cls}`.trim();
+      statusText.textContent = `状态：${text}`;
+    }
+
+    function setCanvasDefaults() {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.lineWidth = lineWidth;
+    }
+
+    function snapshot() {
+      history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+      if (history.length > 50) history.shift();
+    }
+
+    function undo() {
+      const imageData = history.pop();
+      if (imageData) ctx.putImageData(imageData, 0, 0);
+    }
+
+    function setMode(nextMode) {
+      mode = nextMode;
+      drawBtn.classList.toggle('active', mode === 'draw');
+      eraserBtn.classList.toggle('active', mode === 'erase');
+    }
+
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+      return { x, y };
+    }
+
+    function startDraw(e) {
+      e.preventDefault();
+      snapshot();
+      drawing = true;
+      const { x, y } = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    }
+
+    function draw(e) {
+      if (!drawing) return;
+      e.preventDefault();
+      const { x, y } = getPos(e);
+      ctx.lineWidth = lineWidth;
+      ctx.globalCompositeOperation = 'source-over';
+      if (mode === 'erase') {
+        // Use white paint as eraser to avoid transparency artifacts that can trigger Canny false positives.
+        ctx.strokeStyle = '#ffffff';
+      } else {
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+      }
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      schedulePreview();
+    }
+
+    function endDraw() {
+      if (!drawing) return;
+      drawing = false;
+      ctx.closePath();
+      ctx.globalCompositeOperation = 'source-over';
+      schedulePreview();
+    }
+
+    function clearCanvas() {
+      snapshot();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      schedulePreview();
+    }
+
+    function downloadPng() {
+      const link = document.createElement('a');
+      link.download = 'scribble_input.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+
+    function loadImageToCanvas(file) {
+      const image = new Image();
+      image.onload = () => {
+        snapshot();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const scale = Math.min(canvas.width / image.width, canvas.height / image.height);
+        const drawW = image.width * scale;
+        const drawH = image.height * scale;
+        const offsetX = (canvas.width - drawW) / 2;
+        const offsetY = (canvas.height - drawH) / 2;
+        ctx.drawImage(image, offsetX, offsetY, drawW, drawH);
+        schedulePreview();
+      };
+      image.src = URL.createObjectURL(file);
+    }
+
+    function schedulePreview() {
+      if (previewTimer) {
+        clearTimeout(previewTimer);
+      }
+      previewTimer = setTimeout(() => {
+        triggerPreview();
+      }, PREVIEW_DEBOUNCE_MS);
+    }
+
+    function updateCanvasPerfWarning(width, height) {
+      const totalPixels = width * height;
+      const largeDimension = width >= 1400 || height >= 1400;
+      const veryLargeCanvas = totalPixels >= 1_200_000;
+
+      if (largeDimension || veryLargeCanvas) {
+        canvasWarning.classList.remove('hidden');
+        canvasWarning.textContent = `Warning：当前画布为 ${width}×${height}（约 ${(totalPixels / 1_000_000).toFixed(2)}MP），预览与生成可能明显变慢，且有更高显存占用风险。`;
+      } else {
+        canvasWarning.classList.add('hidden');
+        canvasWarning.textContent = '';
+      }
+    }
+
+    function applyCanvasSizeFromInputs(preserveDrawing = true) {
+      const nextWidth = Math.max(64, Number(widthInput.value) || 400);
+      const nextHeight = Math.max(64, Number(heightInput.value) || 600);
+
+      widthInput.value = String(nextWidth);
+      heightInput.value = String(nextHeight);
+
+      if (canvas.width === nextWidth && canvas.height === nextHeight) {
+        updateCanvasPerfWarning(nextWidth, nextHeight);
+        return;
+      }
+
+      let previousCanvas = null;
+      if (preserveDrawing) {
+        previousCanvas = document.createElement('canvas');
+        previousCanvas.width = canvas.width;
+        previousCanvas.height = canvas.height;
+        previousCanvas.getContext('2d').drawImage(canvas, 0, 0);
+      }
+
+      canvas.width = nextWidth;
+      canvas.height = nextHeight;
+  canvasWrap.style.width = `${Math.round(nextWidth * CANVAS_DISPLAY_SCALE)}px`;
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.lineWidth = lineWidth;
+
+      if (previousCanvas) {
+        ctx.drawImage(previousCanvas, 0, 0, canvas.width, canvas.height);
+      }
+
+      history.length = 0;
+      updateCanvasPerfWarning(nextWidth, nextHeight);
+    }
+
+    function switchSettingsMode(nextMode) {
+      settingsMode = nextMode;
+      const basic = settingsMode === 'basic';
+
+      basicModeBtn.classList.toggle('active', basic);
+      advancedModeBtn.classList.toggle('active', !basic);
+      basicFields.classList.toggle('hidden', !basic);
+      advancedFields.classList.toggle('hidden', basic);
+      schedulePreview();
+    }
+
+    function getParams() {
+      const params = {
+        prompt: promptInput.value,
+        negative_prompt: negativePromptInput.value,
+        width: Number(widthInput.value),
+        height: Number(heightInput.value),
+        seed: Number(seedInput.value),
+        output_format: outputFormatInput.value,
+      };
+
+      if (settingsMode === 'advanced') {
+        return {
+          ...params,
+          lcm_steps: Number(lcmStepsInput.value),
+          lcm_guidance_scale: Number(lcmGuidanceInput.value),
+          lcm_denoise: Number(lcmDenoiseInput.value),
+          latent_scale_factor: Number(latentScaleInput.value),
+          scribble_scale_stage1: Number(scribbleScale1Input.value),
+          canny_scale_stage1: Number(cannyScale1Input.value),
+          dpmpp_steps: Number(dpmppStepsInput.value),
+          dpmpp_guidance_scale: Number(dpmppGuidanceInput.value),
+          dpmpp_denoise: Number(dpmppDenoiseInput.value),
+          scribble_scale_stage2: Number(scribbleScale2Input.value),
+        };
+      }
+
+  const [scribble1, canny1, scribble2] = PRESET_SCALES[qualityPreset.value] || PRESET_SCALES.Normal;
+      return {
+        ...params,
+        scribble_scale_stage1: scribble1,
+        canny_scale_stage1: canny1,
+        scribble_scale_stage2: scribble2,
+      };
+    }
+
+    function canvasToBlob() {
+      return new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('画布导出失败'));
+            return;
+          }
+          resolve(blob);
+        }, 'image/png');
+      });
+    }
+
+    function isCanvasBlank() {
+      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const r = pixels[i];
+        const g = pixels[i + 1];
+        const b = pixels[i + 2];
+        const a = pixels[i + 3];
+        if (r !== 255 || g !== 255 || b !== 255 || a !== 255) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function clearOutputImages() {
+      stage1Preview.removeAttribute('src');
+      cannyPreview.removeAttribute('src');
+      finalPreview.removeAttribute('src');
+    }
+
+    function randomizeSeed() {
+      const seed = Math.floor(Math.random() * 2147483647);
+      seedInput.value = String(seed);
+    }
+
+    async function fetchStatus() {
+      try {
+        const resp = await fetch('/status');
+        const data = await resp.json();
+        if (data.status === 'ready' && !data.busy) {
+          setStatus(`就绪（${data.device || 'unknown'}）`, 'ok');
+        } else if (data.busy) {
+          setStatus('正在生成中，请稍候', 'warn');
+        } else {
+          setStatus('初始化中...', 'warn');
+        }
+      } catch (err) {
+        setStatus(`状态获取失败：${err.message}`, 'err');
+      }
+    }
+
+    async function triggerPreview() {
+      if (generateBtn.disabled) return;
+
+      if (isCanvasBlank()) {
+        stage1Preview.removeAttribute('src');
+        cannyPreview.removeAttribute('src');
+        setStatus('画布为空，已跳过自动预览', 'warn');
+        return;
+      }
+
+      if (previewInFlight) {
+        pendingPreview = true;
+        return;
+      }
+
+      previewInFlight = true;
+      try {
+        setStatus('参数/画布已变更，正在生成 Stage1 预览...', 'warn');
+        const blob = await canvasToBlob();
+        const form = new FormData();
+        form.append('image', blob, 'canvas_input.png');
+        form.append('params', JSON.stringify(getParams()));
+
+        const resp = await fetch('/preview', {
+          method: 'POST',
+          body: form
+        });
+
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+          throw new Error(data.error || `HTTP ${resp.status}`);
+        }
+
+        if (data.warning || data.nsfw_blocked) {
+          stage1Preview.removeAttribute('src');
+          cannyPreview.removeAttribute('src');
+          setStatus(data.warning || '预览被拦截', 'warn');
+          return;
+        }
+
+        const ts = `t=${Date.now()}`;
+        stage1Preview.src = `${data.preview_urls.stage1}?${ts}`;
+        cannyPreview.src = `${data.preview_urls.canny}?${ts}`;
+        setStatus('Stage1 预览已更新', 'ok');
+      } catch (err) {
+        setStatus(`预览失败：${err.message}`, 'err');
+      } finally {
+        previewInFlight = false;
+        if (pendingPreview) {
+          pendingPreview = false;
+          schedulePreview();
+        }
+      }
+    }
+
+    async function generate() {
+      try {
+        if (previewTimer) {
+          clearTimeout(previewTimer);
+          previewTimer = null;
+        }
+
+        generateBtn.disabled = true;
+        setStatus('上传草图并生成中...', 'warn');
+        resultMeta.textContent = '';
+
+        const blob = await canvasToBlob();
+        const form = new FormData();
+        form.append('image', blob, 'canvas_input.png');
+        form.append('params', JSON.stringify(getParams()));
+
+        const resp = await fetch('/generate', {
+          method: 'POST',
+          body: form
+        });
+
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+          throw new Error(data.error || `HTTP ${resp.status}`);
+        }
+
+        if (data.warning || data.nsfw_blocked) {
+          clearOutputImages();
+          resultMeta.textContent = data.warning || '输出被拦截';
+          setStatus(data.warning || '生成结果被拦截', 'warn');
+          return;
+        }
+
+        const ts = `t=${Date.now()}`;
+        stage1Preview.src = `${data.preview_urls.stage1}?${ts}`;
+        cannyPreview.src = `${data.preview_urls.canny}?${ts}`;
+        finalPreview.src = `${data.preview_urls.final}?${ts}`;
+
+        resultMeta.textContent = `输出目录：${data.output_dir} | Final: ${data.final_image}`;
+        setStatus('生成完成', 'ok');
+      } catch (err) {
+        setStatus(`生成失败：${err.message}`, 'err');
+      } finally {
+        generateBtn.disabled = false;
+      }
+    }
+
+    drawBtn.addEventListener('click', () => setMode('draw'));
+    eraserBtn.addEventListener('click', () => setMode('erase'));
+    basicModeBtn.addEventListener('click', () => switchSettingsMode('basic'));
+    advancedModeBtn.addEventListener('click', () => switchSettingsMode('advanced'));
+    undoBtn.addEventListener('click', () => {
+      undo();
+      schedulePreview();
+    });
+    clearBtn.addEventListener('click', clearCanvas);
+    downloadBtn.addEventListener('click', downloadPng);
+    uploadBtn.addEventListener('click', () => uploadInput.click());
+    uploadInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) loadImageToCanvas(file);
+      e.target.value = '';
+    });
+
+    sizeRange.addEventListener('input', () => {
+      lineWidth = Number.parseFloat(sizeRange.value);
+      sizeValue.textContent = lineWidth.toFixed(1);
+    });
+
+    [promptInput, negativePromptInput, seedInput, outputFormatInput, qualityPreset,
+      lcmStepsInput, lcmGuidanceInput, lcmDenoiseInput, latentScaleInput,
+      scribbleScale1Input, cannyScale1Input, dpmppStepsInput, dpmppGuidanceInput,
+      dpmppDenoiseInput, scribbleScale2Input].forEach((el) => {
+      el.addEventListener('input', schedulePreview);
+      el.addEventListener('change', schedulePreview);
+    });
+
+    [widthInput, heightInput].forEach((el) => {
+      el.addEventListener('input', () => {
+        applyCanvasSizeFromInputs(true);
+      });
+      el.addEventListener('change', () => {
+        applyCanvasSizeFromInputs(true);
+      });
+    });
+
+    canvas.addEventListener('pointerdown', startDraw);
+    canvas.addEventListener('pointermove', draw);
+    window.addEventListener('pointerup', endDraw);
+    window.addEventListener('pointercancel', endDraw);
+
+    generateBtn.addEventListener('click', generate);
+    syncStatusBtn.addEventListener('click', fetchStatus);
+
+    setCanvasDefaults();
+  randomizeSeed();
+    switchSettingsMode('basic');
+    applyCanvasSizeFromInputs(false);
+    fetchStatus();
+    setInterval(fetchStatus, 7000);
+  </script>
+</body>
+</html>
