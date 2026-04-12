@@ -24,11 +24,12 @@ def cannyPreprocessor(image, low_threshold=50, high_threshold=100):
     Use Canny edge detection.
     Useless.
     """
-    image_np = np.array(image.convert("RGB"))
-    edges = cv2.Canny(image_np, low_threshold, high_threshold)
-    edges = edges[:, :, None]
-    edges = np.concatenate([edges, edges, edges], axis=2)
-    return Image.fromarray(edges)
+    return image
+    # image_np = np.array(image.convert("RGB"))
+    # edges = cv2.Canny(image_np, low_threshold, high_threshold)
+    # edges = edges[:, :, None]
+    # edges = np.concatenate([edges, edges, edges], axis=2)
+    # return Image.fromarray(edges)
 
 def getInputImages(input_dir):
     """
