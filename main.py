@@ -71,7 +71,7 @@ def main():
         control_images_stage1 = [control_image_scribble, control_image_canny]
         
         # random seed
-        generator = torch.Generator(device=device).manual_seed(133)
+        generator = torch.Generator(device=device).manual_seed(143)
 
         if not args.single_stage:
             print(f"Stage 1: LCM with {args.lcm_steps} steps, guidance={args.lcm_guidance_scale}, denoise={args.lcm_denoise}")
@@ -108,6 +108,7 @@ def main():
                 latents_stage1: torch.Tensor = output_stage1[0]  # type: ignore
             
             print(f"Stage 1 complete, latent shape: {latents_stage1.shape}")
+            print(f"NSFW detected in stage 1: {nsfw}")
             
             # Latent upscaling
             print(f"Upscaling latents by factor {args.latent_scale_factor}")
@@ -140,6 +141,8 @@ def main():
                 )
                 nsfw_stage2: bool = output_stage2[1]  # type: ignore
                 image_final: Image.Image = output_stage2[0][0]  # type: ignore
+                print(f"Stage 2 complete, output image size: {image_final.size}")
+                print(f"NSFW detected in stage 2: {nsfw_stage2}")
         
         else:
             print("Single-stage generation was deprecated. Use two-stage mode.")
