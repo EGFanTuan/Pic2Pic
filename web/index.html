@@ -656,6 +656,50 @@
       seedInput.value = String(seed);
     }
 
+    function applyServerDefaults(defaults) {
+      if (!defaults || typeof defaults !== 'object') return;
+
+      const setValue = (inputEl, key) => {
+        if (!inputEl) return;
+        const value = defaults[key];
+        if (value === undefined || value === null) return;
+        inputEl.value = String(value);
+      };
+
+      setValue(promptInput, 'prompt');
+      setValue(negativePromptInput, 'negative_prompt');
+      setValue(widthInput, 'width');
+      setValue(heightInput, 'height');
+      setValue(seedInput, 'seed');
+      setValue(outputFormatInput, 'output_format');
+
+      setValue(lcmStepsInput, 'lcm_steps');
+      setValue(lcmGuidanceInput, 'lcm_guidance_scale');
+      setValue(lcmDenoiseInput, 'lcm_denoise');
+      setValue(latentScaleInput, 'latent_scale_factor');
+      setValue(scribbleScale1Input, 'scribble_scale_stage1');
+      setValue(cannyScale1Input, 'canny_scale_stage1');
+      setValue(dpmppStepsInput, 'dpmpp_steps');
+      setValue(dpmppGuidanceInput, 'dpmpp_guidance_scale');
+      setValue(dpmppDenoiseInput, 'dpmpp_denoise');
+      setValue(scribbleScale2Input, 'scribble_scale_stage2');
+    }
+
+    async function loadDefaultsFromServer() {
+      try {
+        const resp = await fetch('/status');
+        const data = await resp.json();
+        if (!resp.ok || !data || typeof data !== 'object' || !data.defaults) {
+          return false;
+        }
+        applyServerDefaults(data.defaults);
+        return true;
+      } catch (err) {
+        console.warn('Failed to load defaults from server:', err);
+        return false;
+      }
+    }
+
     async function fetchStatus() {
       try {
         const resp = await fetch('/status');
@@ -821,12 +865,18 @@
     generateBtn.addEventListener('click', generate);
     syncStatusBtn.addEventListener('click', fetchStatus);
 
-    setCanvasDefaults();
-  randomizeSeed();
-    switchSettingsMode('basic');
-    applyCanvasSizeFromInputs(false);
-    fetchStatus();
-    setInterval(fetchStatus, 7000);
+    async function initializePage() {
+      setCanvasDefaults();
+      const loadedDefaults = await loadDefaultsFromServer();
+      if (!loadedDefaults) {
+        randomizeSeed();
+      }
+      applyCanvasSizeFromInputs(false);
+      await fetchStatus();
+      setInterval(fetchStatus, 7000);
+    }
+
+    initializePage();
   </script>
 </body>
 </html>
