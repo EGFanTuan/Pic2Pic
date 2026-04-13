@@ -31,7 +31,7 @@ MANDATORY_NEGATIVE_PREFIX = 'not safe fot work, not suitable for work, NSFW'
 
 DEFAULT_GENERATION_PARAMS: Dict[str, Any] = {
     'prompt': 'masterpiece, best quality, anime style \n',
-    'negative_prompt': 'not safe fot work, not suitable for work, NSFW, worst quality, low quality, blurry, bad anatomy, bad hands, words, text，',
+    'negative_prompt': 'not safe fot work, not suitable for work, NSFW, worst quality, low quality, blurry, bad anatomy, bad hands, words, text',
     'lcm_steps': 4,
     'lcm_guidance_scale': 2.5,
     'lcm_denoise': 0.9,
@@ -46,8 +46,44 @@ DEFAULT_GENERATION_PARAMS: Dict[str, Any] = {
     'single_stage': False,
 }
 
+BASIC_MODE_PRESETS: Dict[str, Dict[str, Any]] = {
+    'Noob': {
+        'label': 'Noob',
+        'description': '这会为unet留足发挥空间 | 选择此项如果您认为自己的草图拉完了',
+        'scribble_scale_stage1': 0.6,
+        'canny_scale_stage1': 0.3,
+        'scribble_scale_stage2': 0.5,
+    },
+    'Normal': {
+        'label': 'Normal',
+        'description': '平衡您的想法与unet的发挥空间 | 选择此项如果您认为自己的草图是NPC水平',
+        'scribble_scale_stage1': 0.8,
+        'canny_scale_stage1': 0.5,
+        'scribble_scale_stage2': 0.8,
+    },
+    'Hardcore': {
+        'label': 'Hardcore',
+        'description': '画面由您主导 | 选择此项如果您认为自己的草图是人上人',
+        'scribble_scale_stage1': 1.1,
+        'canny_scale_stage1': 0.7,
+        'scribble_scale_stage2': 1.1,
+    },
+    'God': {
+        'label': 'God',
+        'description': '您将作为达芬奇 | 选择此项如果您认为自己的草图能给到夯',
+        'scribble_scale_stage1': 1.3,
+        'canny_scale_stage1': 0.9,
+        'scribble_scale_stage2': 1.3,
+    },
+}
+
+DEFAULT_BASIC_MODE_PRESET = 'Normal'
+
 
 def _to_bool(value: Any) -> bool:
+    """
+    A simple helper to convert various truthy/falsy values to bool, for more flexible param parsing.
+    """
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
@@ -56,11 +92,17 @@ def _to_bool(value: Any) -> bool:
 
 
 def _has_mandatory_negative_prefix(text: str) -> bool:
+    """
+    Check if the text has the mandatory negative prefix.
+    """
     normalized = text.strip().lower()
     return normalized.startswith(MANDATORY_NEGATIVE_PREFIX.lower())
 
 
 def _apply_mandatory_negative_prefix(user_negative_prompt: str) -> str:
+    """
+    Add the mandatory negative prefix to the user-provided negative prompt if it's not already present.
+    """
     if _has_mandatory_negative_prefix(user_negative_prompt):
         return user_negative_prompt.strip()
     extra = user_negative_prompt.strip()
@@ -70,6 +112,9 @@ def _apply_mandatory_negative_prefix(user_negative_prompt: str) -> str:
 
 
 def _is_nsfw_flagged(flag: Any) -> bool:
+    """
+    Check if the given flag is NSFW (Not Safe For Work).
+    """
     if flag is None:
         return False
     if isinstance(flag, bool):
@@ -82,6 +127,11 @@ def _is_nsfw_flagged(flag: Any) -> bool:
 
 
 def _parse_generation_params(params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Parse and validate generation parameters from the request,
+    applying defaults from server config and hardcoded defaults,
+    and ensuring mandatory negative prompt prefix is included.
+    """
     if server_config is None:
         raise RuntimeError('Server config is not initialized')
 
@@ -113,6 +163,10 @@ def _parse_generation_params(params: Dict[str, Any]) -> Dict[str, Any]:
     return merged
 
 def parse_server_args():
+    """  
+    Parse command-line arguments for server configuration.
+    Not generation parameters.
+    """
     parser = argparse.ArgumentParser(description='Pic2Pic Server')
     parser.add_argument('--host', type=str, default='127.0.0.1', help='Host to bind')
     parser.add_argument('--port', type=int, default=5000, help='Port to bind')
@@ -125,6 +179,9 @@ def parse_server_args():
     return parser.parse_args()
 
 def initialize_models(config):
+    """
+    Initialize the Stable Diffusion pipelines and ControlNet models.
+    """
     global pipe, pipe_stage1, pipe_stage2, controlnet_scribble, device
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -156,7 +213,10 @@ def initialize_models(config):
     os.makedirs(config.output_dir, exist_ok=True)
 
 def decode_latents(latents: torch.Tensor) -> Image.Image:
-    """Decode latents using VAE"""
+    """
+    Decode latents using VAE.
+    Return the first image if batch size > 1.
+    """
     if pipe is None:
         raise RuntimeError('Pipeline not initialized')
 
@@ -170,6 +230,9 @@ def decode_latents(latents: torch.Tensor) -> Image.Image:
 
 
 def _load_request_image_and_params() -> Tuple[Image.Image, Dict[str, Any]]:
+    """
+    Load the request image and parameters.
+    """
     if 'image' not in request.files:
         raise ValueError('No image file provided')
 
@@ -194,6 +257,9 @@ def _load_request_image_and_params() -> Tuple[Image.Image, Dict[str, Any]]:
 
 
 def run_stage1(control_image: Image.Image, resolved_params: Dict[str, Any]) -> Tuple[torch.Tensor, Image.Image, Image.Image, Image.Image, bool]:
+    """  
+    Run the first stage of the pipeline (LCM) with the given control image and parameters.
+    """
     global pipe_stage1, device
 
     if pipe_stage1 is None or device is None:
@@ -258,6 +324,9 @@ def run_stage1(control_image: Image.Image, resolved_params: Dict[str, Any]) -> T
 
 
 def run_stage2(latents_stage1: torch.Tensor, control_image_scribble: Image.Image, resolved_params: Dict[str, Any]) -> Tuple[Image.Image, bool]:
+    """   
+    Run the second stage of the pipeline (DPMPP) with the latents denoised by stage1(LCM), scribble control image, and parameters.
+    """
     global pipe_stage2, device
 
     if pipe_stage2 is None or device is None:
@@ -313,6 +382,7 @@ def run_stage2(latents_stage1: torch.Tensor, control_image_scribble: Image.Image
 def generate_image(control_image: Image.Image, params: Dict[str, Any]) -> Tuple[Image.Image, Image.Image, Image.Image, Dict[str, Any], bool, bool]:
     """
     Generate image from control image with given parameters.
+    It will run both stage1 and stage2.
     Returns tuple (final_image, stage1_decoded_image, canny_image)
     """
     global pipe, pipe_stage1, pipe_stage2, device
@@ -336,6 +406,10 @@ def generate_image(control_image: Image.Image, params: Dict[str, Any]) -> Tuple[
 
 @app.route('/preview', methods=['POST'])
 def handle_preview():
+    """
+    Handle preview requests  for fast feedback on stage1 results.
+    Run stage1 with the given control image and parameters, return the decoded stage1 image and canny image for preview.
+    """
     if pipe is None:
         return jsonify({'error': 'Model is not ready'}), 503
 
@@ -389,6 +463,10 @@ def handle_preview():
 
 @app.route('/generate', methods=['POST'])
 def handle_generate():
+    """
+    Handle generate requests for full image generation.
+    Run both stage1 and stage2 with the given control image and parameters, return the final generated image, stage1 decoded image, and canny image.
+    """
     if pipe is None:
         return jsonify({'error': 'Model is not ready'}), 503
 
@@ -476,15 +554,29 @@ def get_output_file(filename):
 
 @app.route('/status', methods=['GET'])
 def status():
+    defaults = {
+        **DEFAULT_GENERATION_PARAMS,
+        'width': server_config.width if server_config else None,
+        'height': server_config.height if server_config else None,
+        'output_format': server_config.output_format if server_config else None,
+    }
+
     return jsonify({
         'status': 'ready' if pipe is not None else 'initializing',
         'busy': generation_lock.locked(),
         'device': device,
+        'defaults': defaults,
+        'basic_mode': {
+            'default_preset': DEFAULT_BASIC_MODE_PRESET,
+            'presets': BASIC_MODE_PRESETS,
+            'note': '普通模式会自动设置三项关键控制强度（S1 Scribble / S1 Canny / S2 Scribble）。',
+        },
         'config': {
             'checkpoint_name': server_config.checkpoint_name if server_config else None,
             'width': server_config.width if server_config else None,
             'height': server_config.height if server_config else None,
-            'output_dir': server_config.output_dir if server_config else None
+            'output_dir': server_config.output_dir if server_config else None,
+            'output_format': server_config.output_format if server_config else None,
         }
     })
 
