@@ -291,7 +291,7 @@
               <option value="Hardcore">Hardcore（画面由您主导）</option>
               <option value="God">God（您将作为达芬奇）</option>
             </select>
-            <div class="note">普通模式会自动设置三项关键控制强度（S1 Scribble / S1 Canny / S2 Scribble）。</div>
+            <div id="qualityPresetNote" class="note">普通模式会自动设置三项关键控制强度（S1 Scribble / S1 Canny / S2 Scribble）。</div>
           </div>
 
           <div id="advancedFields" class="field full hidden">
@@ -363,6 +363,7 @@
   const basicFields = document.getElementById('basicFields');
   const advancedFields = document.getElementById('advancedFields');
   const qualityPreset = document.getElementById('qualityPreset');
+  const qualityPresetNote = document.getElementById('qualityPresetNote');
   const canvasWarning = document.getElementById('canvasWarning');
 
   const widthInput = document.getElementById('width');
@@ -399,16 +400,88 @@
     const PREVIEW_DEBOUNCE_MS = 2000;
     const CANVAS_DISPLAY_SCALE = 1.3;
 
-    const PRESET_SCALES = {
-      'Noob': [0.6, 0.3, 0.5],
-      'Normal': [0.8, 0.5, 0.8],
-      'Hardcore': [1.1, 0.7, 1.1],
-      'God': [1.3, 0.9, 1.3]
+    const DEFAULT_PRESET_KEY = 'Normal';
+    const FALLBACK_PRESETS = {
+      Noob: {
+        label: 'Noob',
+        description: '这会为unet留足发挥空间',
+        scribble_scale_stage1: 0.6,
+        canny_scale_stage1: 0.3,
+        scribble_scale_stage2: 0.5,
+      },
+      Normal: {
+        label: 'Normal',
+        description: '平衡您的想法与新的创意',
+        scribble_scale_stage1: 0.8,
+        canny_scale_stage1: 0.5,
+        scribble_scale_stage2: 0.8,
+      },
+      Hardcore: {
+        label: 'Hardcore',
+        description: '画面由您主导',
+        scribble_scale_stage1: 1.1,
+        canny_scale_stage1: 0.7,
+        scribble_scale_stage2: 1.1,
+      },
+      God: {
+        label: 'God',
+        description: '您将作为达芬奇',
+        scribble_scale_stage1: 1.3,
+        canny_scale_stage1: 0.9,
+        scribble_scale_stage2: 1.3,
+      },
     };
+    let basicModePresets = { ...FALLBACK_PRESETS };
+    let basicModeDefaultPreset = DEFAULT_PRESET_KEY;
+    let basicModeNoteText = '普通模式会自动设置三项关键控制强度（S1 Scribble / S1 Canny / S2 Scribble）。';
 
     function setStatus(text, cls = '') {
       statusText.className = `status ${cls}`.trim();
       statusText.textContent = `状态：${text}`;
+    }
+
+    function normalizePresetMap(rawPresets) {
+      if (!rawPresets || typeof rawPresets !== 'object') return null;
+      const normalized = {};
+      Object.entries(rawPresets).forEach(([key, value]) => {
+        if (!value || typeof value !== 'object') return;
+        const scribble1 = Number(value.scribble_scale_stage1);
+        const canny1 = Number(value.canny_scale_stage1);
+        const scribble2 = Number(value.scribble_scale_stage2);
+        if (!Number.isFinite(scribble1) || !Number.isFinite(canny1) || !Number.isFinite(scribble2)) {
+          return;
+        }
+        normalized[key] = {
+          label: String(value.label || key),
+          description: String(value.description || ''),
+          scribble_scale_stage1: scribble1,
+          canny_scale_stage1: canny1,
+          scribble_scale_stage2: scribble2,
+        };
+      });
+      if (Object.keys(normalized).length === 0) return null;
+      return normalized;
+    }
+
+    function renderBasicPresetOptions() {
+      const presetEntries = Object.entries(basicModePresets);
+      if (presetEntries.length === 0) {
+        basicModePresets = { ...FALLBACK_PRESETS };
+      }
+
+      qualityPreset.innerHTML = '';
+      Object.entries(basicModePresets).forEach(([key, preset]) => {
+        const option = document.createElement('option');
+        option.value = key;
+        option.textContent = `${preset.label}（${preset.description || '无说明'}）`;
+        qualityPreset.appendChild(option);
+      });
+
+      if (!basicModePresets[basicModeDefaultPreset]) {
+        basicModeDefaultPreset = Object.keys(basicModePresets)[0] || DEFAULT_PRESET_KEY;
+      }
+      qualityPreset.value = basicModeDefaultPreset;
+      qualityPresetNote.textContent = basicModeNoteText;
     }
 
     function setCanvasDefaults() {
@@ -610,12 +683,14 @@
         };
       }
 
-  const [scribble1, canny1, scribble2] = PRESET_SCALES[qualityPreset.value] || PRESET_SCALES.Normal;
+      const preset = basicModePresets[qualityPreset.value]
+        || basicModePresets[basicModeDefaultPreset]
+        || FALLBACK_PRESETS[DEFAULT_PRESET_KEY];
       return {
         ...params,
-        scribble_scale_stage1: scribble1,
-        canny_scale_stage1: canny1,
-        scribble_scale_stage2: scribble2,
+        scribble_scale_stage1: preset.scribble_scale_stage1,
+        canny_scale_stage1: preset.canny_scale_stage1,
+        scribble_scale_stage2: preset.scribble_scale_stage2,
       };
     }
 
@@ -689,10 +764,26 @@
       try {
         const resp = await fetch('/status');
         const data = await resp.json();
-        if (!resp.ok || !data || typeof data !== 'object' || !data.defaults) {
+        if (!resp.ok || !data || typeof data !== 'object') {
           return false;
         }
-        applyServerDefaults(data.defaults);
+
+        if (data.defaults) {
+          applyServerDefaults(data.defaults);
+        }
+
+        if (data.basic_mode && typeof data.basic_mode === 'object') {
+          const normalizedPresets = normalizePresetMap(data.basic_mode.presets);
+          if (normalizedPresets) {
+            basicModePresets = normalizedPresets;
+            basicModeDefaultPreset = String(data.basic_mode.default_preset || basicModeDefaultPreset);
+          }
+          if (data.basic_mode.note !== undefined && data.basic_mode.note !== null) {
+            basicModeNoteText = String(data.basic_mode.note);
+          }
+          renderBasicPresetOptions();
+        }
+
         return true;
       } catch (err) {
         console.warn('Failed to load defaults from server:', err);
@@ -867,6 +958,7 @@
 
     async function initializePage() {
       setCanvasDefaults();
+      renderBasicPresetOptions();
       const loadedDefaults = await loadDefaultsFromServer();
       if (!loadedDefaults) {
         randomizeSeed();
