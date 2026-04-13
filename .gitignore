@@ -1,6 +1,8 @@
 venv/
-models/
+models/*
+!models/.gitkeep
+output/*
+!output/.gitkeep
 doc/encrypted/
 doc/comfyUI/
-output/
 __pycache__/
