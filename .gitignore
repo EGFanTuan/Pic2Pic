@@ -6,3 +6,4 @@ output/*
 doc/encrypted/
 doc/comfyUI/
 __pycache__/
+node_modules/
