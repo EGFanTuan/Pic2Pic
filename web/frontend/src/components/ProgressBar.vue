@@ -43,7 +43,7 @@ defineProps({
 .progress-bar-container {
   width: 100%;
   padding: 16px;
-  background: #ffffff;
+  background: var(--panel);
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
@@ -70,14 +70,14 @@ defineProps({
 .progress-track {
   width: 100%;
   height: 8px;
-  background: #e5e7eb;
+  background: var(--line);
   border-radius: 4px;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--primary), #60a5fa);
+  background: linear-gradient(90deg, var(--primary), #818cf8);
   border-radius: 4px;
   transition: width 0.3s ease;
   position: relative;

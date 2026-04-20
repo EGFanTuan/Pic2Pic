@@ -1,5 +1,12 @@
 import os
 import sys
+
+# Add the project root to sys.path so we can import src
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 import torch
 import argparse
 from threading import Lock
@@ -14,10 +21,11 @@ from flask import Flask, request, jsonify, send_from_directory
 from src.image_utils import invertImage, preprocessImage, cannyPreprocessor
 from src.latent_utils import latentUpscale
 from src.pipeline import buildPipeline
+from diffusers.pipelines.controlnet.pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
 
 app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-WEB_DIR = os.path.join(BASE_DIR, 'web')
+WEB_DIR = os.path.join(BASE_DIR, '..', 'frontend', 'dist')
 
 # Global state
 pipe = None
@@ -25,6 +33,7 @@ pipe_stage1 = None
 pipe_stage2 = None
 controlnet_scribble = None
 device = None
+gpu_name = None
 server_config = None
 generation_lock = Lock()
 MANDATORY_NEGATIVE_PREFIX = 'not safe fot work, not suitable for work, NSFW'
@@ -187,11 +196,27 @@ def initialize_models(config):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f'Using device: {device}')
     if torch.cuda.is_available():
-        print(f'GPU: {torch.cuda.get_device_name(0)}')
+        global gpu_name
+        gpu_name = torch.cuda.get_device_name(0)
+        print(f'GPU: {gpu_name}')
         print(f'CUDA version: {torch.version.cuda}')  # type: ignore[attr-defined]
+    else:
+        # Try to detect if an NVIDIA GPU exists but is not usable by torch
+        try:
+            import subprocess
+            res = subprocess.run(['nvidia-smi'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if res.returncode == 0:
+                print("\n" + "!"*60)
+                print("WARNING: NVIDIA GPU detected, but PyTorch is using CPU.")
+                print("To enable GPU acceleration, please run:")
+                print("pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124 --force-reinstall")
+                print("!"*60 + "\n")
+        except Exception:
+            pass
     
     base_path = os.path.dirname(os.path.abspath(__file__))
-    models_path = config.models_path if os.path.isabs(config.models_path) else os.path.join(base_path, config.models_path)
+    project_root = os.path.abspath(os.path.join(base_path, '..', '..'))
+    models_path = config.models_path if os.path.isabs(config.models_path) else os.path.join(project_root, config.models_path)
     
     checkpoint_path = os.path.join(models_path, 'checkpoints', config.checkpoint_name)
     controlnet_scribble_path = os.path.join(models_path, 'controlnet', 'control_v11p_sd15_scribble.pth')
@@ -565,6 +590,7 @@ def status():
         'status': 'ready' if pipe is not None else 'initializing',
         'busy': generation_lock.locked(),
         'device': device,
+        'gpu_name': gpu_name,
         'defaults': defaults,
         'basic_mode': {
             'default_preset': DEFAULT_BASIC_MODE_PRESET,
@@ -580,13 +606,47 @@ def status():
         }
     })
 
+@app.route('/switch_device', methods=['POST'])
+def switch_device():
+    """
+    Switch between CPU and GPU.
+    """
+    global device, pipe, pipe_stage1, pipe_stage2
+    
+    if pipe is None:
+        return jsonify({'error': 'Server not ready'}), 400
+        
+    target = request.json.get('device', 'cpu')
+    if target == 'cuda' and not torch.cuda.is_available():
+        return jsonify({'error': 'CUDA not available'}), 400
+        
+    with generation_lock:
+        try:
+            device = target
+            if pipe:
+                # Cast to float32 for CPU (fp16 not supported on CPU)
+                # Cast to float16 for GPU (performance/memory optimization)
+                dtype = torch.float16 if device == 'cuda' else torch.float32
+                pipe = pipe.to(device=device, dtype=dtype)
+                
+            # Update stage pipelines
+            if pipe_stage2 and pipe:
+                pipe_stage2 = StableDiffusionControlNetImg2ImgPipeline(**pipe.components)
+                pipe_stage2.controlnet = controlnet_scribble
+            
+            return jsonify({'status': 'success', 'device': device, 'gpu_name': gpu_name})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     config = parse_server_args()
     server_config = config
-    try:
-        initialize_models(config)
-        print(f'Server starting on http://{config.host}:{config.port}')
-        app.run(host=config.host, port=config.port, debug=False)
-    except Exception as e:
-        print(f'Failed to start server: {e}')
-        sys.exit(1)
+    
+    # Start model initialization in a background thread
+    import threading
+    init_thread = threading.Thread(target=initialize_models, args=(config,), daemon=True)
+    init_thread.start()
+    
+    print(f'Server starting on http://{config.host}:{config.port}')
+    print('Models are loading in the background...')
+    app.run(host=config.host, port=config.port, debug=False)
