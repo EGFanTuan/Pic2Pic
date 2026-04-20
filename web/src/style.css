@@ -1,0 +1,141 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  background: #f4f6fb;
+  color: #1f2937;
+  line-height: 1.6;
+}
+
+:root {
+  --bg: #f4f6fb;
+  --panel: #ffffff;
+  --line: #e6ebf2;
+  --text: #1f2937;
+  --sub: #5b6472;
+  --primary: #3a7afe;
+  --primary-hover: #2a6ae8;
+  --danger: #e44c4c;
+  --ok: #1da672;
+  --warn: #d98a00;
+  --border-radius: 8px;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+button {
+  font-family: inherit;
+  font-size: 14px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: var(--border-radius);
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+button.danger {
+  color: var(--danger);
+  border-color: #f5cccc;
+  background: #fff7f7;
+}
+
+button.active {
+  background: #edf3ff;
+  border-color: #b6ccff;
+  color: #1443af;
+}
+
+input[type="text"],
+input[type="number"],
+textarea,
+select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--border-radius);
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--sub);
+  font-weight: 500;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.card-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcff;
+}
+
+.card-header h2 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.card-body {
+  padding: 16px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.section {
+  margin-bottom: 16px;
+}
+
+.section:last-child {
+  margin-bottom: 0;
+}
+
+.hidden {
+  display: none !important;
+}
