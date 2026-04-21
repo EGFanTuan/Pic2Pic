@@ -38,6 +38,21 @@ server_config = None
 generation_lock = Lock()
 MANDATORY_NEGATIVE_PREFIX = 'not safe fot work, not suitable for work, NSFW'
 
+# Progress tracking
+progress_state = {
+    'percentage': 0,
+    'status': 'idle', # 'idle', 'previewing', 'generating'
+    'details': ''
+}
+
+def update_progress(percentage: int, status: str = None, details: str = None):
+    global progress_state
+    progress_state['percentage'] = min(max(percentage, 0), 100)
+    if status is not None:
+        progress_state['status'] = status
+    if details is not None:
+        progress_state['details'] = details
+
 DEFAULT_GENERATION_PARAMS: Dict[str, Any] = {
     'prompt': 'masterpiece, best quality, anime style \n',
     'negative_prompt': 'not safe fot work, not suitable for work, NSFW, worst quality, low quality, blurry, bad anatomy, bad hands, words, text',
@@ -235,6 +250,11 @@ def initialize_models(config):
     )
     print('Models loaded successfully')
     
+    # Ensure output_dir is absolute
+    if not os.path.isabs(config.output_dir):
+        config.output_dir = os.path.abspath(os.path.join(PROJECT_ROOT, config.output_dir))
+    
+    print(f'Output directory: {config.output_dir}')
     os.makedirs(config.output_dir, exist_ok=True)
 
 def decode_latents(latents: torch.Tensor) -> Image.Image:
@@ -301,6 +321,8 @@ def run_stage1(control_image: Image.Image, resolved_params: Dict[str, Any]) -> T
     canny_scale_stage1 = resolved_params['canny_scale_stage1']
     seed = resolved_params['seed']
 
+    update_progress(0, details='Preparing stage 1...')
+
     control_image = control_image.resize((width, height))
     control_image = invertImage(control_image)
 
@@ -322,6 +344,14 @@ def run_stage1(control_image: Image.Image, resolved_params: Dict[str, Any]) -> T
         dtype=pipe_stage1.unet.dtype
     )
 
+    def callback(step, timestep, latents):
+        # Stage 1 progress: 0-100% if previewing, 0-50% if generating
+        if progress_state['status'] == 'previewing':
+            p = int((step / lcm_steps) * 100)
+        else:
+            p = int((step / lcm_steps) * 50)
+        update_progress(p, details=f'Stage 1: Step {step}/{lcm_steps}')
+
     with torch.no_grad():
         output_stage1 = pipe_stage1(
             prompt=prompt,
@@ -335,7 +365,9 @@ def run_stage1(control_image: Image.Image, resolved_params: Dict[str, Any]) -> T
             guidance_scale=lcm_guidance_scale,
             generator=generator,
             output_type='latent',
-            return_dict=False
+            return_dict=False,
+            callback=callback,
+            callback_steps=1
         )
         nsfw = output_stage1[1]
         latents_stage1 = cast(torch.Tensor, output_stage1[0])
@@ -382,6 +414,11 @@ def run_stage2(latents_stage1: torch.Tensor, control_image_scribble: Image.Image
     new_height = int(height * latent_scale_factor)
     control_image_stage2 = control_image_scribble.resize((new_width, new_height))
 
+    def callback(step, timestep, latents):
+        # Stage 2 progress: 50-100% (only used during generation)
+        p = 50 + int((step / dpmpp_steps) * 50)
+        update_progress(p, details=f'Stage 2: Step {step}/{dpmpp_steps}')
+
     with torch.no_grad():
         output_stage2 = pipe_stage2(
             prompt=prompt,
@@ -393,7 +430,9 @@ def run_stage2(latents_stage1: torch.Tensor, control_image_scribble: Image.Image
             strength=dpmpp_denoise,
             guidance_scale=dpmpp_guidance_scale,
             generator=generator,
-            return_dict=False
+            return_dict=False,
+            callback=callback,
+            callback_steps=1
         )
         output_stage2_any = cast(Any, output_stage2)
         nsfw_stage2 = output_stage2_any[1]
@@ -424,7 +463,9 @@ def generate_image(control_image: Image.Image, params: Dict[str, Any]) -> Tuple[
         control_image,
         resolved_params,
     )
+    update_progress(50, details='Stage 1 complete. Upscaling...')
     image_final, stage2_nsfw = run_stage2(latents_stage1, control_image_scribble, resolved_params)
+    update_progress(100, details='Generation complete.')
     
     return image_final, stage1_decoded, control_image_canny, resolved_params, stage1_nsfw, stage2_nsfw
 
@@ -447,13 +488,16 @@ def handle_preview():
         if resolved_params['single_stage']:
             raise ValueError('single_stage is deprecated')
 
+        update_progress(0, status='previewing', details='Starting preview...')
         _, stage1_image, canny_image, _, stage1_nsfw = run_stage1(control_image, resolved_params)
+        update_progress(100, details='Preview complete.')
     except ValueError as e:
         return jsonify({'error': f'Invalid request: {e}'}), 400
     except Exception as e:
         return jsonify({'error': f'Preview failed: {e}'}), 500
     finally:
         generation_lock.release()
+        update_progress(0, status='idle', details='')
 
     if stage1_nsfw:
         return jsonify({
@@ -505,6 +549,7 @@ def handle_generate():
         return jsonify({'error': 'Server is busy generating. Please retry shortly.'}), 429
 
     try:
+        update_progress(0, status='generating', details='Starting generation...')
         final_image, stage1_image, canny_image, resolved_params, stage1_nsfw, stage2_nsfw = generate_image(
             control_image, params
         )
@@ -514,6 +559,7 @@ def handle_generate():
         return jsonify({'error': f'Generation failed: {e}'}), 500
     finally:
         generation_lock.release()
+        update_progress(0, status='idle', details='')
 
     if server_config is None:
         return jsonify({'error': 'Server config is not initialized'}), 500
@@ -591,6 +637,7 @@ def status():
         'busy': generation_lock.locked(),
         'device': device,
         'gpu_name': gpu_name,
+        'progress': progress_state,
         'defaults': defaults,
         'basic_mode': {
             'default_preset': DEFAULT_BASIC_MODE_PRESET,

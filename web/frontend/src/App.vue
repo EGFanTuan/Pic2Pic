@@ -109,18 +109,16 @@
             :showDetails="true"
           />
         </div>
-        
-        <div class="preview-section">
-          <PreviewPanel 
-            :stage1Url="stage1Url"
-            :cannyUrl="cannyUrl"
-            :finalUrl="finalUrl"
-            :isGenerating="isGenerating"
-            :progress="progress"
-          />
-        </div>
       </div>
     </main>
+
+    <ResultModal 
+      :show="showResultModal"
+      :stage1Url="stage1Url"
+      :cannyUrl="cannyUrl"
+      :finalUrl="finalUrl"
+      @close="showResultModal = false"
+    />
   </div>
 </template>
 
@@ -128,7 +126,7 @@
 import { ref, computed, onMounted } from 'vue'
 import CanvasComponent from './components/CanvasComponent.vue'
 import ControlPanel from './components/ControlPanel.vue'
-import PreviewPanel from './components/PreviewPanel.vue'
+import ResultModal from './components/ResultModal.vue'
 import StyleSelector from './components/StyleSelector.vue'
 import ProgressBar from './components/ProgressBar.vue'
 import { useApiStore } from './stores/api'
@@ -148,6 +146,7 @@ const stage1Url = ref('')
 const cannyUrl = ref('')
 const finalUrl = ref('')
 const isGenerating = ref(false)
+const showResultModal = ref(false)
 const progress = ref(0)
 const progressDetails = ref('')
 const selectedStyles = ref('')
@@ -161,6 +160,24 @@ const statusClass = computed(() => {
   return 'status-normal'
 })
 
+const pollProgress = async () => {
+  if (!isGenerating.value) return
+  try {
+    await apiStore.fetchStatus()
+    if (apiStore.progress && apiStore.progress.status !== 'idle') {
+      progress.value = apiStore.progress.percentage
+      progressDetails.value = apiStore.progress.details || 
+        (apiStore.progress.status === 'previewing' ? '正在预览...' : '正在生成...')
+    }
+  } catch (e) {
+    console.error('Polling progress failed:', e)
+  }
+  
+  if (isGenerating.value) {
+    setTimeout(pollProgress, 500)
+  }
+}
+
 const handlePreviewUpdate = (previewData) => {
   stage1Url.value = previewData.stage1
   cannyUrl.value = previewData.canny
@@ -168,6 +185,11 @@ const handlePreviewUpdate = (previewData) => {
 
 const handlePreview = async (extraParams = {}) => {
   try {
+    isGenerating.value = true
+    progress.value = 0
+    progressDetails.value = '准备预览...'
+    pollProgress()
+    
     const imageBlob = await canvasRef.value.getImageBlob()
     const result = await apiStore.preview(imageBlob, {
       width: Math.floor(canvasWidth.value / 8) * 8,
@@ -182,11 +204,14 @@ const handlePreview = async (extraParams = {}) => {
     if (result.preview_urls) {
       stage1Url.value = result.preview_urls.stage1
       cannyUrl.value = result.preview_urls.canny
+      showResultModal.value = true
     }
     
     statusText.value = '预览已更新'
   } catch (error) {
     statusText.value = `预览失败：${error.message}`
+  } finally {
+    isGenerating.value = false
   }
 }
 
@@ -203,7 +228,8 @@ const handleGenerate = async (extraParams = {}) => {
     isGenerating.value = true
     progress.value = 0
     statusText.value = '生成中...'
-    progressDetails.value = '正在初始化模型...'
+    progressDetails.value = '正在初始化...'
+    pollProgress()
     
     const fullPrompt = [prompt.value, selectedStyles.value].filter(Boolean).join(', ')
     
@@ -224,22 +250,13 @@ const handleGenerate = async (extraParams = {}) => {
       params.lora_weight = selectedLora.value.weight
     }
     
-    const result = await apiStore.generate(imageBlob, params, (progressValue) => {
-      progress.value = progressValue
-      
-      if (progressValue < 30) {
-        progressDetails.value = 'Stage 1: 快速预览生成中...'
-      } else if (progressValue < 70) {
-        progressDetails.value = 'Stage 2: 精修生成中...'
-      } else {
-        progressDetails.value = '最终处理中...'
-      }
-    })
+    const result = await apiStore.generate(imageBlob, params)
     
     if (result.preview_urls) {
       stage1Url.value = result.preview_urls.stage1
       cannyUrl.value = result.preview_urls.canny
       finalUrl.value = result.preview_urls.final
+      showResultModal.value = true
     }
     
     statusText.value = '生成完成'
@@ -444,48 +461,77 @@ onMounted(async () => {
 }
 
 .global-progress {
-  padding: 8px 32px;
-  background: white;
-  border-bottom: 1px solid #f1f5f9;
-  animation: slideDown 0.3s ease;
+  padding: 16px 32px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(15px);
+  border-bottom: 2px solid rgba(102, 126, 234, 0.2);
+  animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  z-index: 90;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
 }
 
 .progress-info {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
+  align-items: center;
 }
 
 .progress-label {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress-label::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: #667eea;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #667eea;
+  animation: pulse 1.5s infinite;
 }
 
 .progress-percent {
-  font-size: 11px;
-  font-weight: 800;
-  color: #667eea;
+  font-size: 18px;
+  font-weight: 900;
+  color: #4f46e5;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 10px rgba(79, 70, 229, 0.2);
 }
 
 .progress-track {
-  height: 4px;
+  height: 12px;
   background: #f1f5f9;
-  border-radius: 2px;
+  border-radius: 20px;
   overflow: hidden;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.03);
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-  border-radius: 2px;
-  transition: width 0.3s ease;
+  background: linear-gradient(90deg, #6366f1 0%, #a855f7 50%, #6366f1 100%);
+  background-size: 200% 100%;
+  border-radius: 20px;
+  transition: width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+  animation: progressShimmer 2s linear infinite;
+}
+
+@keyframes progressShimmer {
+  0% { background-position: 100% 0%; }
+  100% { background-position: -100% 0%; }
 }
 
 @keyframes slideDown {
-  from { transform: translateY(-10px); opacity: 0; }
+  from { transform: translateY(-20px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
 
