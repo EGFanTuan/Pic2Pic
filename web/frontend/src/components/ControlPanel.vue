@@ -48,6 +48,9 @@
             <input type="number" v-model.number="localHeight" min="64" step="8">
           </div>
         </div>
+        <div v-if="sizeWarning" class="size-warning">
+          ⚠️ {{ sizeWarning }}
+        </div>
       </div>
 
       <div class="section">
@@ -156,6 +159,7 @@ const props = defineProps({
   seed: Number,
   outputFormat: String,
   settingsMode: String,
+  qualityPreset: String,
   canvasWidth: Number,
   canvasHeight: Number,
   isGenerating: Boolean
@@ -167,6 +171,7 @@ const emit = defineEmits([
   'update:seed',
   'update:outputFormat',
   'update:settingsMode',
+  'update:qualityPreset',
   'update:canvasWidth',
   'update:canvasHeight',
   'generate',
@@ -182,9 +187,18 @@ const localNegativePrompt = ref(props.negativePrompt || '')
 const localSeed = ref(props.seed || 143)
 const localOutputFormat = ref(props.outputFormat || 'png')
 const localSettingsMode = ref(props.settingsMode || 'basic')
-const selectedPreset = ref('Normal')
+const selectedPreset = ref(props.qualityPreset || 'Normal')
 
 const basicModeNote = computed(() => apiStore.basicModeNote || '普通模式会自动设置关键控制强度')
+
+const sizeWarning = computed(() => {
+  const w = localWidth.value || 0
+  const h = localHeight.value || 0
+  if (w * h > 800 * 600) {
+    return `当前尺寸 ${w}×${h}（${(w * h / 1000000).toFixed(2)}M 像素）可能超出显存限制，建议控制在 800×600 以内`
+  }
+  return ''
+})
 
 const presets = computed(() => {
   return apiStore.basicModePresets || {
@@ -258,6 +272,10 @@ watch(() => props.settingsMode, (newVal) => {
   if (newVal !== undefined && newVal !== localSettingsMode.value) localSettingsMode.value = newVal
 })
 
+watch(() => props.qualityPreset, (newVal) => {
+  if (newVal !== undefined && newVal !== selectedPreset.value) selectedPreset.value = newVal
+})
+
 watch(localWidth, (newVal) => {
   emit('update:canvasWidth', newVal)
 })
@@ -284,6 +302,10 @@ watch(localOutputFormat, (newVal) => {
 
 watch(localSettingsMode, (newVal) => {
   emit('update:settingsMode', newVal)
+})
+
+watch(selectedPreset, (newVal) => {
+  emit('update:qualityPreset', newVal)
 })
 
 const switchMode = (mode) => {
@@ -394,6 +416,17 @@ const getGenerationParams = () => {
   padding: 8px;
   background: rgba(255, 255, 255, 0.02);
   border-radius: 4px;
+}
+
+.size-warning {
+  font-size: 12px;
+  color: var(--warn);
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(217, 138, 0, 0.1);
+  border: 1px solid rgba(217, 138, 0, 0.25);
+  border-radius: 4px;
+  line-height: 1.4;
 }
 
 .action-buttons {

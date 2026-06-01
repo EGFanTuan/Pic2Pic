@@ -26,6 +26,11 @@
         <input type="file" accept="image/*" @change="handleUpload" ref="uploadInput">
         📁 上传
       </label>
+      <select v-model="uploadScale" class="upload-scale-select">
+        <option value="1">原始大小</option>
+        <option value="0.75">0.75×</option>
+        <option value="0.5">0.5×</option>
+      </select>
     </div>
 
     <div class="brush-controls">
@@ -64,7 +69,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 
 const props = defineProps({
   width: {
@@ -98,6 +103,7 @@ const uploadInput = ref(null)
 const ctx = ref(null)
 const mode = ref('draw')
 const lineWidth = ref(3)
+const uploadScale = ref('1')
 
 const drawing = ref(false)
 const lastX = ref(0)
@@ -121,38 +127,9 @@ const initCanvas = () => {
 const drawGridBackground = () => {
   if (!ctx.value || !canvas.value) return
   
+  // Fill white background (no grid, to avoid interfering with ControlNet)
   ctx.value.fillStyle = '#ffffff'
   ctx.value.fillRect(0, 0, canvas.value.width, canvas.value.height)
-  
-  ctx.value.strokeStyle = '#f0f0f0'
-  ctx.value.lineWidth = 1
-  
-  const gridSize = 32
-  
-  for (let x = 0; x <= canvas.value.width; x += gridSize) {
-    ctx.value.beginPath()
-    ctx.value.moveTo(x, 0)
-    ctx.value.lineTo(x, canvas.value.height)
-    ctx.value.stroke()
-  }
-  
-  for (let y = 0; y <= canvas.value.height; y += gridSize) {
-    ctx.value.beginPath()
-    ctx.value.moveTo(0, y)
-    ctx.value.lineTo(canvas.value.width, y)
-    ctx.value.stroke()
-  }
-  
-  ctx.value.strokeStyle = '#e0e0e0'
-  ctx.value.lineWidth = 2
-  
-  ctx.value.beginPath()
-  ctx.value.moveTo(0, 0)
-  ctx.value.lineTo(canvas.value.width, 0)
-  ctx.value.lineTo(canvas.value.width, canvas.value.height)
-  ctx.value.lineTo(0, canvas.value.height)
-  ctx.value.lineTo(0, 0)
-  ctx.value.stroke()
 }
 
 const clearCanvas = () => {
@@ -279,22 +256,44 @@ const handleUpload = (event) => {
   const reader = new FileReader()
   reader.onload = (e) => {
     const img = new Image()
-    img.onload = () => {
-      saveToHistory()
+    img.onload = async () => {
+      // 将画布尺寸调整为上传图片的大小（对齐到8的倍数），应用缩放
+      const scale = parseFloat(uploadScale.value)
+      const scaledWidth = Math.round(img.width * scale)
+      const scaledHeight = Math.round(img.height * scale)
+      const newWidth = Math.max(64, Math.ceil(scaledWidth / 8) * 8)
+      const newHeight = Math.max(64, Math.ceil(scaledHeight / 8) * 8)
       
-      const scale = Math.min(
-        canvas.value.width / img.width,
-        canvas.value.height / img.height
-      )
+      // 直接设置画布尺寸并绘制图片
+      canvas.value.width = newWidth
+      canvas.value.height = newHeight
       
-      const drawWidth = img.width * scale
-      const drawHeight = img.height * scale
-      const offsetX = (canvas.value.width - drawWidth) / 2
-      const offsetY = (canvas.value.height - drawHeight) / 2
-      
+      // 重获上下文（resize 后上下文状态被重置）
+      ctx.value = canvas.value.getContext('2d')
       ctx.value.fillStyle = '#ffffff'
-      ctx.value.fillRect(0, 0, canvas.value.width, canvas.value.height)
-      ctx.value.drawImage(img, offsetX, offsetY, drawWidth, drawHeight)
+      ctx.value.fillRect(0, 0, newWidth, newHeight)
+      
+      // 居中绘制缩放后的图片（保持宽高比）
+      const offsetX = Math.floor((newWidth - scaledWidth) / 2)
+      const offsetY = Math.floor((newHeight - scaledHeight) / 2)
+      ctx.value.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight)
+      
+      // 保存已绘制好的图像数据
+      const savedImageData = ctx.value.getImageData(0, 0, newWidth, newHeight)
+      
+      // 发送尺寸变更（会触发 watcher → clearCanvas → putImageData）
+      emit('update:width', newWidth)
+      emit('update:height', newHeight)
+      
+      // 等 Vue 完成 watcher 处理后，确保图片正确恢复
+      await nextTick()
+      if (canvas.value.width === newWidth && canvas.value.height === newHeight) {
+        ctx.value.putImageData(savedImageData, 0, 0)
+      }
+      
+      // 重置历史记录（旧尺寸的 ImageData 无法用于新画布）
+      history.value = []
+      saveToHistory()
       
       emit('update:preview')
     }
@@ -538,5 +537,20 @@ canvas:hover {
 
 .upload-btn input[type="file"] {
   display: none;
+}
+
+.upload-scale-select {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: var(--border-radius);
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-scale-select:hover {
+  border-color: var(--primary);
 }
 </style>

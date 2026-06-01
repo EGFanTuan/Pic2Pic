@@ -114,6 +114,7 @@
             v-model:seed="seed"
             v-model:outputFormat="outputFormat"
             v-model:settingsMode="settingsMode"
+            v-model:qualityPreset="qualityPreset"
             :canvasWidth="canvasWidth"
             :canvasHeight="canvasHeight"
             @update:canvasWidth="(val) => canvasWidth = val"
@@ -151,7 +152,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import CanvasComponent from './components/CanvasComponent.vue'
 import ControlPanel from './components/ControlPanel.vue'
 import ResultModal from './components/ResultModal.vue'
@@ -169,6 +170,7 @@ const negativePrompt = ref('')
 const seed = ref(143)
 const outputFormat = ref('png')
 const settingsMode = ref('basic')
+const qualityPreset = ref('Normal')
 
 const stage1Url = ref('')
 const cannyUrl = ref('')
@@ -181,6 +183,7 @@ const progressDetails = ref('')
 const selectedStyles = ref('')
 const selectedLora = ref(null)
 const previewDebounceTimer = ref(null)
+const paramChangeTimer = ref(null)
 
 const statusText = ref('初始化中...')
 const statusClass = computed(() => {
@@ -386,6 +389,41 @@ onMounted(async () => {
   }
   
   pollStatus()
+})
+
+// 获取质量预设参数
+const getQualityPresetParams = () => {
+  if (settingsMode.value !== 'basic') return {}
+  const presets = apiStore.basicModePresets
+  if (!presets || !presets[qualityPreset.value]) return {}
+  const p = presets[qualityPreset.value]
+  return {
+    scribble_scale_stage1: p.scribble_scale_stage1,
+    canny_scale_stage1: p.canny_scale_stage1,
+    scribble_scale_stage2: p.scribble_scale_stage2
+  }
+}
+
+// 当种子、提示词、质量预设变化时自动触发预览（带防抖）
+const triggerParamAutoPreview = () => {
+  if (paramChangeTimer.value) {
+    clearTimeout(paramChangeTimer.value)
+  }
+  paramChangeTimer.value = setTimeout(async () => {
+    await handleAutoPreview(getQualityPresetParams())
+  }, 800)
+}
+
+watch(seed, () => {
+  triggerParamAutoPreview()
+})
+
+watch(prompt, () => {
+  triggerParamAutoPreview()
+})
+
+watch(qualityPreset, () => {
+  triggerParamAutoPreview()
 })
 </script>
 
