@@ -26,6 +26,11 @@
         <input type="file" accept="image/*" @change="handleUpload" ref="uploadInput">
         📁 上传
       </label>
+      <select v-model="uploadScale" class="upload-scale-select">
+        <option value="1">原始大小</option>
+        <option value="0.75">0.75×</option>
+        <option value="0.5">0.5×</option>
+      </select>
     </div>
 
     <div class="brush-controls">
@@ -98,6 +103,7 @@ const uploadInput = ref(null)
 const ctx = ref(null)
 const mode = ref('draw')
 const lineWidth = ref(3)
+const uploadScale = ref('1')
 
 const drawing = ref(false)
 const lastX = ref(0)
@@ -253,9 +259,12 @@ const handleUpload = (event) => {
     img.onload = async () => {
       saveToHistory()
       
-      // 将画布尺寸调整为上传图片的大小（对齐到8的倍数）
-      const newWidth = Math.max(64, Math.ceil(img.width / 8) * 8)
-      const newHeight = Math.max(64, Math.ceil(img.height / 8) * 8)
+      // 将画布尺寸调整为上传图片的大小（对齐到8的倍数），应用缩放
+      const scale = parseFloat(uploadScale.value)
+      const scaledWidth = Math.round(img.width * scale)
+      const scaledHeight = Math.round(img.height * scale)
+      const newWidth = Math.max(64, Math.ceil(scaledWidth / 8) * 8)
+      const newHeight = Math.max(64, Math.ceil(scaledHeight / 8) * 8)
       
       // 直接设置画布尺寸并绘制图片
       canvas.value.width = newWidth
@@ -265,7 +274,11 @@ const handleUpload = (event) => {
       ctx.value = canvas.value.getContext('2d')
       ctx.value.fillStyle = '#ffffff'
       ctx.value.fillRect(0, 0, newWidth, newHeight)
-      ctx.value.drawImage(img, 0, 0, img.width, img.height)
+      
+      // 居中绘制缩放后的图片（保持宽高比）
+      const offsetX = Math.floor((newWidth - scaledWidth) / 2)
+      const offsetY = Math.floor((newHeight - scaledHeight) / 2)
+      ctx.value.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight)
       
       // 保存已绘制好的图像数据
       const savedImageData = ctx.value.getImageData(0, 0, newWidth, newHeight)
@@ -522,5 +535,20 @@ canvas:hover {
 
 .upload-btn input[type="file"] {
   display: none;
+}
+
+.upload-scale-select {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: var(--border-radius);
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-scale-select:hover {
+  border-color: var(--primary);
 }
 </style>

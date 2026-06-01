@@ -194,8 +194,8 @@ const basicModeNote = computed(() => apiStore.basicModeNote || '普通模式会�
 const sizeWarning = computed(() => {
   const w = localWidth.value || 0
   const h = localHeight.value || 0
-  if (w * h > 1000 * 1000) {
-    return `当前尺寸 ${w}×${h}（${(w * h / 1000000).toFixed(2)}M 像素）可能超出显存限制，建议控制在 1000×1000 以内`
+  if (w * h > 800 * 600) {
+    return `当前尺寸 ${w}×${h}（${(w * h / 1000000).toFixed(2)}M 像素）可能超出显存限制，建议控制在 800×600 以内`
   }
   return ''
 })
