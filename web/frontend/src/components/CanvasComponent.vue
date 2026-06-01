@@ -121,38 +121,9 @@ const initCanvas = () => {
 const drawGridBackground = () => {
   if (!ctx.value || !canvas.value) return
   
+  // Fill white background (no grid, to avoid interfering with ControlNet)
   ctx.value.fillStyle = '#ffffff'
   ctx.value.fillRect(0, 0, canvas.value.width, canvas.value.height)
-  
-  ctx.value.strokeStyle = '#f0f0f0'
-  ctx.value.lineWidth = 1
-  
-  const gridSize = 32
-  
-  for (let x = 0; x <= canvas.value.width; x += gridSize) {
-    ctx.value.beginPath()
-    ctx.value.moveTo(x, 0)
-    ctx.value.lineTo(x, canvas.value.height)
-    ctx.value.stroke()
-  }
-  
-  for (let y = 0; y <= canvas.value.height; y += gridSize) {
-    ctx.value.beginPath()
-    ctx.value.moveTo(0, y)
-    ctx.value.lineTo(canvas.value.width, y)
-    ctx.value.stroke()
-  }
-  
-  ctx.value.strokeStyle = '#e0e0e0'
-  ctx.value.lineWidth = 2
-  
-  ctx.value.beginPath()
-  ctx.value.moveTo(0, 0)
-  ctx.value.lineTo(canvas.value.width, 0)
-  ctx.value.lineTo(canvas.value.width, canvas.value.height)
-  ctx.value.lineTo(0, canvas.value.height)
-  ctx.value.lineTo(0, 0)
-  ctx.value.stroke()
 }
 
 const clearCanvas = () => {
