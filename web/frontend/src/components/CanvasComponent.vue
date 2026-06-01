@@ -257,8 +257,6 @@ const handleUpload = (event) => {
   reader.onload = (e) => {
     const img = new Image()
     img.onload = async () => {
-      saveToHistory()
-      
       // 将画布尺寸调整为上传图片的大小（对齐到8的倍数），应用缩放
       const scale = parseFloat(uploadScale.value)
       const scaledWidth = Math.round(img.width * scale)
@@ -292,6 +290,10 @@ const handleUpload = (event) => {
       if (canvas.value.width === newWidth && canvas.value.height === newHeight) {
         ctx.value.putImageData(savedImageData, 0, 0)
       }
+      
+      // 重置历史记录（旧尺寸的 ImageData 无法用于新画布）
+      history.value = []
+      saveToHistory()
       
       emit('update:preview')
     }
