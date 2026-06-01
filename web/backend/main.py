@@ -1,4 +1,12 @@
 import os
+import sys
+
+# Add project root to sys.path
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 import torch
 from PIL import Image
 from diffusers.schedulers.scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
@@ -22,7 +30,8 @@ def main():
 
     # path preparation
     base_path = os.path.dirname(os.path.abspath(__file__))
-    models_path = os.path.join(base_path, "models")
+    project_root = os.path.abspath(os.path.join(base_path, '..', '..'))
+    models_path = os.path.join(project_root, "models")
 
     checkpoint_path = os.path.join(models_path, "checkpoints", args.checkpoint_name)
     controlnet_scribble_path = os.path.join(models_path, "controlnet", "control_v11p_sd15_scribble.pth")

@@ -21,15 +21,18 @@ def preprocessImage(image):
 
 def cannyPreprocessor(image, low_threshold=50, high_threshold=100):
     """
-    Use Canny edge detection.
-    Useless.
+    Use Canny edge detection to extract outlines from the input image.
     """
-    return image
-    # image_np = np.array(image.convert("RGB"))
-    # edges = cv2.Canny(image_np, low_threshold, high_threshold)
-    # edges = edges[:, :, None]
-    # edges = np.concatenate([edges, edges, edges], axis=2)
-    # return Image.fromarray(edges)
+    # Convert PIL Image to grayscale numpy array
+    image_np = np.array(image.convert("L"))
+    
+    # Run Canny edge detection
+    edges = cv2.Canny(image_np, low_threshold, high_threshold)
+    
+    # Convert back to RGB for consistency (3 channels)
+    edges = cv2.cvtColor(edges, cv2.COLOR_GRAY2RGB)
+    
+    return Image.fromarray(edges)
 
 def getInputImages(input_dir):
     """

@@ -10,11 +10,17 @@ export const useApiStore = defineStore('api', {
   state: () => ({
     status: 'initializing',
     device: 'CPU',
+    gpu_name: null,
     busy: false,
     defaults: null,
     basicModePresets: null,
     basicModeDefaultPreset: 'Normal',
-    basicModeNote: ''
+    basicModeNote: '',
+    progress: {
+      percentage: 0,
+      status: 'idle',
+      details: ''
+    }
   }),
 
   getters: {
@@ -31,6 +37,7 @@ export const useApiStore = defineStore('api', {
         
         this.status = data.status || 'ready'
         this.device = data.device || 'CPU'
+        this.gpu_name = data.gpu_name || null
         this.busy = data.busy || false
         this.defaults = data.defaults || null
         
@@ -40,18 +47,23 @@ export const useApiStore = defineStore('api', {
           this.basicModeNote = data.basic_mode.note || ''
         }
         
+        if (data.progress) {
+          this.progress = data.progress
+        }
+        
         return data
       } catch (error) {
         throw new Error(`状态获取失败：${error.message}`)
       }
     },
 
-    async preview(params, onProgress) {
+    async preview(imageBlob, params, onProgress) {
       try {
         const formData = new FormData()
-        Object.keys(params).forEach(key => {
-          formData.append(key, params[key])
-        })
+        if (imageBlob) {
+          formData.append('image', imageBlob, 'scribble.png')
+        }
+        formData.append('params', JSON.stringify(params))
 
         const response = await api.post('/preview', formData, {
           headers: {
@@ -69,12 +81,13 @@ export const useApiStore = defineStore('api', {
       }
     },
 
-    async generate(params, onProgress) {
+    async generate(imageBlob, params, onProgress) {
       try {
         const formData = new FormData()
-        Object.keys(params).forEach(key => {
-          formData.append(key, params[key])
-        })
+        if (imageBlob) {
+          formData.append('image', imageBlob, 'scribble.png')
+        }
+        formData.append('params', JSON.stringify(params))
 
         const response = await api.post('/generate', formData, {
           headers: {
@@ -89,6 +102,20 @@ export const useApiStore = defineStore('api', {
         return response.data
       } catch (error) {
         throw new Error(error.response?.data?.error || `生成失败：${error.message}`)
+      }
+    },
+
+    async switchDevice(device) {
+      try {
+        const response = await api.post('/switch_device', { device })
+        const data = response.data
+        if (data.status === 'success') {
+          this.device = data.device
+          this.gpu_name = data.gpu_name
+        }
+        return data
+      } catch (error) {
+        throw new Error(error.response?.data?.error || `切换设备失败：${error.message}`)
       }
     }
   }

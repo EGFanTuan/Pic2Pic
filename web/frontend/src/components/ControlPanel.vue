@@ -135,10 +135,10 @@
       </div>
 
       <div class="action-buttons">
-        <button @click="$emit('preview')" :disabled="isGenerating">
+        <button @click="$emit('preview', getGenerationParams())" :disabled="isGenerating">
           👁️ 预览
         </button>
-        <button @click="$emit('generate')" class="primary" :disabled="isGenerating">
+        <button @click="$emit('generate', getGenerationParams())" class="primary" :disabled="isGenerating">
           🎨 生成
         </button>
       </div>
@@ -231,31 +231,31 @@ const dpmppDenoise = ref(0.6)
 const scribbleScale2 = ref(0.9)
 
 watch(() => props.canvasWidth, (newVal) => {
-  localWidth.value = newVal
+  if (newVal !== undefined && newVal !== localWidth.value) localWidth.value = newVal
 })
 
 watch(() => props.canvasHeight, (newVal) => {
-  localHeight.value = newVal
+  if (newVal !== undefined && newVal !== localHeight.value) localHeight.value = newVal
 })
 
 watch(() => props.prompt, (newVal) => {
-  if (newVal !== undefined) localPrompt.value = newVal
+  if (newVal !== undefined && newVal !== localPrompt.value) localPrompt.value = newVal
 })
 
 watch(() => props.negativePrompt, (newVal) => {
-  if (newVal !== undefined) localNegativePrompt.value = newVal
+  if (newVal !== undefined && newVal !== localNegativePrompt.value) localNegativePrompt.value = newVal
 })
 
 watch(() => props.seed, (newVal) => {
-  if (newVal !== undefined) localSeed.value = newVal
+  if (newVal !== undefined && newVal !== localSeed.value) localSeed.value = newVal
 })
 
 watch(() => props.outputFormat, (newVal) => {
-  if (newVal !== undefined) localOutputFormat.value = newVal
+  if (newVal !== undefined && newVal !== localOutputFormat.value) localOutputFormat.value = newVal
 })
 
 watch(() => props.settingsMode, (newVal) => {
-  if (newVal !== undefined) localSettingsMode.value = newVal
+  if (newVal !== undefined && newVal !== localSettingsMode.value) localSettingsMode.value = newVal
 })
 
 watch(localWidth, (newVal) => {
@@ -294,6 +294,32 @@ const randomizeSeed = () => {
   const newSeed = Math.floor(Math.random() * 2147483647)
   emit('update:seed', newSeed)
 }
+
+const getGenerationParams = () => {
+  const params = {}
+  
+  if (localSettingsMode.value === 'basic') {
+    const preset = presets.value[selectedPreset.value]
+    if (preset) {
+      params.scribble_scale_stage1 = preset.scribble_scale_stage1
+      params.canny_scale_stage1 = preset.canny_scale_stage1
+      params.scribble_scale_stage2 = preset.scribble_scale_stage2
+    }
+  } else {
+    params.lcm_steps = lcmSteps.value
+    params.lcm_guidance_scale = lcmGuidance.value
+    params.lcm_denoise = lcmDenoise.value
+    params.latent_scale_factor = latentScale.value
+    params.scribble_scale_stage1 = scribbleScale1.value
+    params.canny_scale_stage1 = cannyScale1.value
+    params.dpmpp_steps = dpmppSteps.value
+    params.dpmpp_guidance_scale = dpmppGuidance.value
+    params.dpmpp_denoise = dpmppDenoise.value
+    params.scribble_scale_stage2 = scribbleScale2.value
+  }
+  
+  return params
+}
 </script>
 
 <style scoped>
@@ -306,7 +332,7 @@ const randomizeSeed = () => {
 .panel-header {
   padding: 12px 16px;
   border-bottom: 1px solid var(--line);
-  background: #fbfcff;
+  background: rgba(255, 255, 255, 0.02);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -366,7 +392,7 @@ const randomizeSeed = () => {
   color: var(--sub);
   margin: 8px 0 0 0;
   padding: 8px;
-  background: #f8fafc;
+  background: rgba(255, 255, 255, 0.02);
   border-radius: 4px;
 }
 

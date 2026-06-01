@@ -144,12 +144,19 @@ const setMode = (newMode) => {
 
 const getCanvasCoordinates = (event) => {
   const rect = canvas.value.getBoundingClientRect()
-  const scaleX = canvas.value.width / rect.width
-  const scaleY = canvas.value.height / rect.height
+  
+  // 考虑到 object-fit: contain 引起的缩放和 letterboxing（留白）
+  const scale = Math.min(rect.width / canvas.value.width, rect.height / canvas.value.height)
+  const displayedWidth = canvas.value.width * scale
+  const displayedHeight = canvas.value.height * scale
+  
+  // object-fit: contain 会使内容居中
+  const offsetX = (rect.width - displayedWidth) / 2
+  const offsetY = (rect.height - displayedHeight) / 2
   
   return {
-    x: (event.clientX - rect.left) * scaleX,
-    y: (event.clientY - rect.top) * scaleY
+    x: (event.clientX - rect.left - offsetX) / scale,
+    y: (event.clientY - rect.top - offsetY) / scale
   }
 }
 
@@ -195,6 +202,20 @@ const handleMouseUp = () => {
     emit('update:preview')
   }
 }
+
+const getImageBlob = () => {
+  return new Promise((resolve) => {
+    if (!canvas.value) {
+      resolve(null)
+      return
+    }
+    canvas.value.toBlob((blob) => {
+      resolve(blob)
+    }, 'image/png')
+  })
+}
+
+defineExpose({ getImageBlob })
 
 const downloadCanvas = () => {
   const link = document.createElement('a')
@@ -255,14 +276,14 @@ const resizeCanvas = () => {
   if (!props.autoResize || !canvasWrapper.value || !canvas.value) return
   
   const wrapperRect = canvasWrapper.value.getBoundingClientRect()
-  const availableWidth = wrapperRect.width
-  const availableHeight = wrapperRect.height
-  
-  if (availableWidth > 0 && availableHeight > 0) {
-    const imageData = ctx.value ? ctx.value.getImageData(0, 0, canvas.value.width, canvas.value.height) : null
+    const availableWidth = Math.floor(wrapperRect.width)
+    const availableHeight = Math.floor(wrapperRect.height)
     
-    canvas.value.width = availableWidth
-    canvas.value.height = availableHeight
+    if (availableWidth > 0 && availableHeight > 0) {
+      const imageData = ctx.value ? ctx.value.getImageData(0, 0, canvas.value.width, canvas.value.height) : null
+      
+      canvas.value.width = availableWidth
+      canvas.value.height = availableHeight
     
     if (imageData) {
       clearCanvas()
@@ -324,7 +345,7 @@ onUnmounted(() => {
   align-items: center;
   padding: 12px 16px;
   border-bottom: 1px solid var(--line);
-  background: #fbfcff;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .canvas-header h2 {
@@ -365,7 +386,7 @@ onUnmounted(() => {
   gap: 12px;
   padding: 8px 16px;
   border-bottom: 1px solid var(--line);
-  background: #f8fafc;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .brush-controls label {
@@ -385,13 +406,13 @@ onUnmounted(() => {
   display: flex;
   align-items: stretch;
   justify-content: stretch;
-  background: #f0f2f5;
+  background: rgba(255, 255, 255, 0.04);
   padding: 0;
   min-height: 400px;
 }
 
 canvas {
-  background: #ffffff;
+  background: var(--panel);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s ease;
   width: 100%;
@@ -405,7 +426,7 @@ canvas {
   align-items: center;
   padding: 8px 16px;
   border-top: 1px solid var(--line);
-  background: #f8fafc;
+  background: rgba(255, 255, 255, 0.02);
   font-size: 12px;
   color: var(--sub);
 }
@@ -416,7 +437,7 @@ canvas {
   gap: 4px;
   padding: 8px 16px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--panel);
   border-radius: var(--border-radius);
   cursor: pointer;
   transition: all 0.2s;
