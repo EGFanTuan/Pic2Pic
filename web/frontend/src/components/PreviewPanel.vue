@@ -99,7 +99,7 @@ const downloadImage = (url, filename) => {
 .panel-header {
   padding: 12px 16px;
   border-bottom: 1px solid var(--line);
-  background: #fbfcff;
+  background: rgba(255, 255, 255, 0.02);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -122,7 +122,7 @@ const downloadImage = (url, filename) => {
 .spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--line);
   border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
@@ -153,7 +153,7 @@ const downloadImage = (url, filename) => {
 }
 
 .preview-container {
-  background: #f8fafc;
+  background: rgba(255, 255, 255, 0.02);
   border: 2px dashed var(--line);
   border-radius: 8px;
   min-height: 200px;

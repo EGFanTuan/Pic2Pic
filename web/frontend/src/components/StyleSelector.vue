@@ -216,7 +216,7 @@ watch(loraWeight, () => {
 
 <style scoped>
 .style-selector {
-  background: #ffffff;
+  background: var(--panel);
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 20px;
@@ -238,7 +238,7 @@ watch(loraWeight, () => {
 .reset-btn {
   padding: 4px 8px;
   font-size: 12px;
-  background: #f3f4f6;
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--line);
 }
 
@@ -269,7 +269,7 @@ watch(loraWeight, () => {
 
 .style-card.active {
   border-color: var(--primary);
-  background: #edf3ff;
+  background: rgba(79, 70, 229, 0.15);
 }
 
 .style-icon {
@@ -314,7 +314,7 @@ watch(loraWeight, () => {
 
 .selected-styles-summary {
   padding: 12px;
-  background: #f8fafc;
+  background: rgba(255, 255, 255, 0.02);
   border-radius: 8px;
   margin-bottom: 16px;
 }
@@ -331,7 +331,7 @@ watch(loraWeight, () => {
 .clear-btn {
   padding: 4px 8px;
   font-size: 11px;
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.1);
   color: #991b1b;
   border: 1px solid #fecaca;
 }
@@ -400,7 +400,7 @@ watch(loraWeight, () => {
 
 .lora-item.active {
   border-color: var(--primary);
-  background: #edf3ff;
+  background: rgba(79, 70, 229, 0.15);
 }
 
 .lora-info {
@@ -433,7 +433,7 @@ watch(loraWeight, () => {
 
 .lora-controls {
   padding: 12px;
-  background: #f8fafc;
+  background: rgba(255, 255, 255, 0.02);
   border-radius: 8px;
 }
 

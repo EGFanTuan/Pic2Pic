@@ -1,5 +1,12 @@
 import os
 import sys
+
+# Add the project root to sys.path so we can import src
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 import torch
 import argparse
 from threading import Lock
@@ -14,10 +21,11 @@ from flask import Flask, request, jsonify, send_from_directory
 from src.image_utils import invertImage, preprocessImage, cannyPreprocessor
 from src.latent_utils import latentUpscale
 from src.pipeline import buildPipeline
+from diffusers.pipelines.controlnet.pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
 
 app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-WEB_DIR = os.path.join(BASE_DIR, 'web')
+WEB_DIR = os.path.join(BASE_DIR, '..', 'frontend', 'dist')
 
 # Global state
 pipe = None
@@ -25,9 +33,25 @@ pipe_stage1 = None
 pipe_stage2 = None
 controlnet_scribble = None
 device = None
+gpu_name = None
 server_config = None
 generation_lock = Lock()
 MANDATORY_NEGATIVE_PREFIX = 'not safe fot work, not suitable for work, NSFW'
+
+# Progress tracking
+progress_state = {
+    'percentage': 0,
+    'status': 'idle', # 'idle', 'previewing', 'generating'
+    'details': ''
+}
+
+def update_progress(percentage: int, status: str = None, details: str = None):
+    global progress_state
+    progress_state['percentage'] = min(max(percentage, 0), 100)
+    if status is not None:
+        progress_state['status'] = status
+    if details is not None:
+        progress_state['details'] = details
 
 DEFAULT_GENERATION_PARAMS: Dict[str, Any] = {
     'prompt': 'masterpiece, best quality, anime style \n',
@@ -187,11 +211,27 @@ def initialize_models(config):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f'Using device: {device}')
     if torch.cuda.is_available():
-        print(f'GPU: {torch.cuda.get_device_name(0)}')
+        global gpu_name
+        gpu_name = torch.cuda.get_device_name(0)
+        print(f'GPU: {gpu_name}')
         print(f'CUDA version: {torch.version.cuda}')  # type: ignore[attr-defined]
+    else:
+        # Try to detect if an NVIDIA GPU exists but is not usable by torch
+        try:
+            import subprocess
+            res = subprocess.run(['nvidia-smi'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if res.returncode == 0:
+                print("\n" + "!"*60)
+                print("WARNING: NVIDIA GPU detected, but PyTorch is using CPU.")
+                print("To enable GPU acceleration, please run:")
+                print("pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124 --force-reinstall")
+                print("!"*60 + "\n")
+        except Exception:
+            pass
     
     base_path = os.path.dirname(os.path.abspath(__file__))
-    models_path = config.models_path if os.path.isabs(config.models_path) else os.path.join(base_path, config.models_path)
+    project_root = os.path.abspath(os.path.join(base_path, '..', '..'))
+    models_path = config.models_path if os.path.isabs(config.models_path) else os.path.join(project_root, config.models_path)
     
     checkpoint_path = os.path.join(models_path, 'checkpoints', config.checkpoint_name)
     controlnet_scribble_path = os.path.join(models_path, 'controlnet', 'control_v11p_sd15_scribble.pth')
@@ -210,6 +250,11 @@ def initialize_models(config):
     )
     print('Models loaded successfully')
     
+    # Ensure output_dir is absolute
+    if not os.path.isabs(config.output_dir):
+        config.output_dir = os.path.abspath(os.path.join(PROJECT_ROOT, config.output_dir))
+    
+    print(f'Output directory: {config.output_dir}')
     os.makedirs(config.output_dir, exist_ok=True)
 
 def decode_latents(latents: torch.Tensor) -> Image.Image:
@@ -276,6 +321,8 @@ def run_stage1(control_image: Image.Image, resolved_params: Dict[str, Any]) -> T
     canny_scale_stage1 = resolved_params['canny_scale_stage1']
     seed = resolved_params['seed']
 
+    update_progress(0, details='Preparing stage 1...')
+
     control_image = control_image.resize((width, height))
     control_image = invertImage(control_image)
 
@@ -297,6 +344,14 @@ def run_stage1(control_image: Image.Image, resolved_params: Dict[str, Any]) -> T
         dtype=pipe_stage1.unet.dtype
     )
 
+    def callback(step, timestep, latents):
+        # Stage 1 progress: 0-100% if previewing, 0-50% if generating
+        if progress_state['status'] == 'previewing':
+            p = int((step / lcm_steps) * 100)
+        else:
+            p = int((step / lcm_steps) * 50)
+        update_progress(p, details=f'Stage 1: Step {step}/{lcm_steps}')
+
     with torch.no_grad():
         output_stage1 = pipe_stage1(
             prompt=prompt,
@@ -310,7 +365,9 @@ def run_stage1(control_image: Image.Image, resolved_params: Dict[str, Any]) -> T
             guidance_scale=lcm_guidance_scale,
             generator=generator,
             output_type='latent',
-            return_dict=False
+            return_dict=False,
+            callback=callback,
+            callback_steps=1
         )
         nsfw = output_stage1[1]
         latents_stage1 = cast(torch.Tensor, output_stage1[0])
@@ -357,6 +414,11 @@ def run_stage2(latents_stage1: torch.Tensor, control_image_scribble: Image.Image
     new_height = int(height * latent_scale_factor)
     control_image_stage2 = control_image_scribble.resize((new_width, new_height))
 
+    def callback(step, timestep, latents):
+        # Stage 2 progress: 50-100% (only used during generation)
+        p = 50 + int((step / dpmpp_steps) * 50)
+        update_progress(p, details=f'Stage 2: Step {step}/{dpmpp_steps}')
+
     with torch.no_grad():
         output_stage2 = pipe_stage2(
             prompt=prompt,
@@ -368,7 +430,9 @@ def run_stage2(latents_stage1: torch.Tensor, control_image_scribble: Image.Image
             strength=dpmpp_denoise,
             guidance_scale=dpmpp_guidance_scale,
             generator=generator,
-            return_dict=False
+            return_dict=False,
+            callback=callback,
+            callback_steps=1
         )
         output_stage2_any = cast(Any, output_stage2)
         nsfw_stage2 = output_stage2_any[1]
@@ -399,7 +463,9 @@ def generate_image(control_image: Image.Image, params: Dict[str, Any]) -> Tuple[
         control_image,
         resolved_params,
     )
+    update_progress(50, details='Stage 1 complete. Upscaling...')
     image_final, stage2_nsfw = run_stage2(latents_stage1, control_image_scribble, resolved_params)
+    update_progress(100, details='Generation complete.')
     
     return image_final, stage1_decoded, control_image_canny, resolved_params, stage1_nsfw, stage2_nsfw
 
@@ -422,13 +488,16 @@ def handle_preview():
         if resolved_params['single_stage']:
             raise ValueError('single_stage is deprecated')
 
+        update_progress(0, status='previewing', details='Starting preview...')
         _, stage1_image, canny_image, _, stage1_nsfw = run_stage1(control_image, resolved_params)
+        update_progress(100, details='Preview complete.')
     except ValueError as e:
         return jsonify({'error': f'Invalid request: {e}'}), 400
     except Exception as e:
         return jsonify({'error': f'Preview failed: {e}'}), 500
     finally:
         generation_lock.release()
+        update_progress(0, status='idle', details='')
 
     if stage1_nsfw:
         return jsonify({
@@ -480,6 +549,7 @@ def handle_generate():
         return jsonify({'error': 'Server is busy generating. Please retry shortly.'}), 429
 
     try:
+        update_progress(0, status='generating', details='Starting generation...')
         final_image, stage1_image, canny_image, resolved_params, stage1_nsfw, stage2_nsfw = generate_image(
             control_image, params
         )
@@ -489,6 +559,7 @@ def handle_generate():
         return jsonify({'error': f'Generation failed: {e}'}), 500
     finally:
         generation_lock.release()
+        update_progress(0, status='idle', details='')
 
     if server_config is None:
         return jsonify({'error': 'Server config is not initialized'}), 500
@@ -565,6 +636,8 @@ def status():
         'status': 'ready' if pipe is not None else 'initializing',
         'busy': generation_lock.locked(),
         'device': device,
+        'gpu_name': gpu_name,
+        'progress': progress_state,
         'defaults': defaults,
         'basic_mode': {
             'default_preset': DEFAULT_BASIC_MODE_PRESET,
@@ -580,13 +653,47 @@ def status():
         }
     })
 
+@app.route('/switch_device', methods=['POST'])
+def switch_device():
+    """
+    Switch between CPU and GPU.
+    """
+    global device, pipe, pipe_stage1, pipe_stage2
+    
+    if pipe is None:
+        return jsonify({'error': 'Server not ready'}), 400
+        
+    target = request.json.get('device', 'cpu')
+    if target == 'cuda' and not torch.cuda.is_available():
+        return jsonify({'error': 'CUDA not available'}), 400
+        
+    with generation_lock:
+        try:
+            device = target
+            if pipe:
+                # Cast to float32 for CPU (fp16 not supported on CPU)
+                # Cast to float16 for GPU (performance/memory optimization)
+                dtype = torch.float16 if device == 'cuda' else torch.float32
+                pipe = pipe.to(device=device, dtype=dtype)
+                
+            # Update stage pipelines
+            if pipe_stage2 and pipe:
+                pipe_stage2 = StableDiffusionControlNetImg2ImgPipeline(**pipe.components)
+                pipe_stage2.controlnet = controlnet_scribble
+            
+            return jsonify({'status': 'success', 'device': device, 'gpu_name': gpu_name})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     config = parse_server_args()
     server_config = config
-    try:
-        initialize_models(config)
-        print(f'Server starting on http://{config.host}:{config.port}')
-        app.run(host=config.host, port=config.port, debug=False)
-    except Exception as e:
-        print(f'Failed to start server: {e}')
-        sys.exit(1)
+    
+    # Start model initialization in a background thread
+    import threading
+    init_thread = threading.Thread(target=initialize_models, args=(config,), daemon=True)
+    init_thread.start()
+    
+    print(f'Server starting on http://{config.host}:{config.port}')
+    print('Models are loading in the background...')
+    app.run(host=config.host, port=config.port, debug=False)

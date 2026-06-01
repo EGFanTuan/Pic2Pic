@@ -43,7 +43,7 @@ defineProps({
 .progress-bar-container {
   width: 100%;
   padding: 16px;
-  background: #ffffff;
+  background: var(--panel);
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
@@ -69,47 +69,31 @@ defineProps({
 
 .progress-track {
   width: 100%;
-  height: 8px;
-  background: #e5e7eb;
-  border-radius: 4px;
+  height: 12px;
+  background: var(--line);
+  border-radius: 10px;
   overflow: hidden;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--primary), #60a5fa);
-  border-radius: 4px;
-  transition: width 0.3s ease;
+  background: linear-gradient(90deg, #6366f1 0%, #a855f7 50%, #6366f1 100%);
+  background-size: 200% 100%;
+  border-radius: 10px;
+  transition: width 0.4s ease;
   position: relative;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
+  animation: progressShimmer 2s linear infinite;
 }
 
-.progress-fill::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.3),
-    transparent
-  );
-  animation: shimmer 2s infinite;
-}
-
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
+@keyframes progressShimmer {
+  0% { background-position: 100% 0%; }
+  100% { background-position: -100% 0%; }
 }
 
 .progress-complete {
-  background: linear-gradient(90deg, var(--ok), #34d399);
+  background: linear-gradient(90deg, #10b981, #34d399);
 }
 
 .progress-details {
