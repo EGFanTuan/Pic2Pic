@@ -48,6 +48,9 @@
             <input type="number" v-model.number="localHeight" min="64" step="8">
           </div>
         </div>
+        <div v-if="sizeWarning" class="size-warning">
+          ⚠️ {{ sizeWarning }}
+        </div>
       </div>
 
       <div class="section">
@@ -187,6 +190,15 @@ const localSettingsMode = ref(props.settingsMode || 'basic')
 const selectedPreset = ref(props.qualityPreset || 'Normal')
 
 const basicModeNote = computed(() => apiStore.basicModeNote || '普通模式会自动设置关键控制强度')
+
+const sizeWarning = computed(() => {
+  const w = localWidth.value || 0
+  const h = localHeight.value || 0
+  if (w * h > 1000 * 1000) {
+    return `当前尺寸 ${w}×${h}（${(w * h / 1000000).toFixed(2)}M 像素）可能超出显存限制，建议控制在 1000×1000 以内`
+  }
+  return ''
+})
 
 const presets = computed(() => {
   return apiStore.basicModePresets || {
@@ -404,6 +416,17 @@ const getGenerationParams = () => {
   padding: 8px;
   background: rgba(255, 255, 255, 0.02);
   border-radius: 4px;
+}
+
+.size-warning {
+  font-size: 12px;
+  color: var(--warn);
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(217, 138, 0, 0.1);
+  border: 1px solid rgba(217, 138, 0, 0.25);
+  border-radius: 4px;
+  line-height: 1.4;
 }
 
 .action-buttons {

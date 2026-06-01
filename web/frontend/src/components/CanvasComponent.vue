@@ -64,7 +64,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 
 const props = defineProps({
   width: {
@@ -250,22 +250,35 @@ const handleUpload = (event) => {
   const reader = new FileReader()
   reader.onload = (e) => {
     const img = new Image()
-    img.onload = () => {
+    img.onload = async () => {
       saveToHistory()
       
-      const scale = Math.min(
-        canvas.value.width / img.width,
-        canvas.value.height / img.height
-      )
+      // 将画布尺寸调整为上传图片的大小（对齐到8的倍数）
+      const newWidth = Math.max(64, Math.ceil(img.width / 8) * 8)
+      const newHeight = Math.max(64, Math.ceil(img.height / 8) * 8)
       
-      const drawWidth = img.width * scale
-      const drawHeight = img.height * scale
-      const offsetX = (canvas.value.width - drawWidth) / 2
-      const offsetY = (canvas.value.height - drawHeight) / 2
+      // 直接设置画布尺寸并绘制图片
+      canvas.value.width = newWidth
+      canvas.value.height = newHeight
       
+      // 重获上下文（resize 后上下文状态被重置）
+      ctx.value = canvas.value.getContext('2d')
       ctx.value.fillStyle = '#ffffff'
-      ctx.value.fillRect(0, 0, canvas.value.width, canvas.value.height)
-      ctx.value.drawImage(img, offsetX, offsetY, drawWidth, drawHeight)
+      ctx.value.fillRect(0, 0, newWidth, newHeight)
+      ctx.value.drawImage(img, 0, 0, img.width, img.height)
+      
+      // 保存已绘制好的图像数据
+      const savedImageData = ctx.value.getImageData(0, 0, newWidth, newHeight)
+      
+      // 发送尺寸变更（会触发 watcher → clearCanvas → putImageData）
+      emit('update:width', newWidth)
+      emit('update:height', newHeight)
+      
+      // 等 Vue 完成 watcher 处理后，确保图片正确恢复
+      await nextTick()
+      if (canvas.value.width === newWidth && canvas.value.height === newHeight) {
+        ctx.value.putImageData(savedImageData, 0, 0)
+      }
       
       emit('update:preview')
     }
