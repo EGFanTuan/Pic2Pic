@@ -156,6 +156,7 @@ const props = defineProps({
   seed: Number,
   outputFormat: String,
   settingsMode: String,
+  qualityPreset: String,
   canvasWidth: Number,
   canvasHeight: Number,
   isGenerating: Boolean
@@ -167,6 +168,7 @@ const emit = defineEmits([
   'update:seed',
   'update:outputFormat',
   'update:settingsMode',
+  'update:qualityPreset',
   'update:canvasWidth',
   'update:canvasHeight',
   'generate',
@@ -182,7 +184,7 @@ const localNegativePrompt = ref(props.negativePrompt || '')
 const localSeed = ref(props.seed || 143)
 const localOutputFormat = ref(props.outputFormat || 'png')
 const localSettingsMode = ref(props.settingsMode || 'basic')
-const selectedPreset = ref('Normal')
+const selectedPreset = ref(props.qualityPreset || 'Normal')
 
 const basicModeNote = computed(() => apiStore.basicModeNote || '普通模式会自动设置关键控制强度')
 
@@ -258,6 +260,10 @@ watch(() => props.settingsMode, (newVal) => {
   if (newVal !== undefined && newVal !== localSettingsMode.value) localSettingsMode.value = newVal
 })
 
+watch(() => props.qualityPreset, (newVal) => {
+  if (newVal !== undefined && newVal !== selectedPreset.value) selectedPreset.value = newVal
+})
+
 watch(localWidth, (newVal) => {
   emit('update:canvasWidth', newVal)
 })
@@ -284,6 +290,10 @@ watch(localOutputFormat, (newVal) => {
 
 watch(localSettingsMode, (newVal) => {
   emit('update:settingsMode', newVal)
+})
+
+watch(selectedPreset, (newVal) => {
+  emit('update:qualityPreset', newVal)
 })
 
 const switchMode = (mode) => {
