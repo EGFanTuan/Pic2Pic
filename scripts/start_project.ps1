@@ -1,9 +1,18 @@
 $ErrorActionPreference = "Stop"
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+# Get the directory where this script is located
+$scriptPath = $MyInvocation.MyCommand.Definition
+$scriptDir = Split-Path -Parent $scriptPath
+$projectRoot = Split-Path -Parent $scriptDir
+
+# Change to project root directory
+Set-Location $projectRoot
+
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "      Pic2Pic Smart Start (PowerShell)   " -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
+Write-Host "Project Root: $projectRoot" -ForegroundColor Gray
 
 
 # 0. Clean up existing processes
@@ -49,8 +58,10 @@ if (-not (Test-Path "venv")) {
     python -m venv venv
 }
 
-Write-Host "[CONFIG] Syncing dependencies..." -ForegroundColor Yellow
+Write-Host "[CONFIG] Activating virtual environment..." -ForegroundColor Yellow
 & ".\venv\Scripts\Activate.ps1"
+
+Write-Host "[CONFIG] Syncing dependencies..." -ForegroundColor Yellow
 pip install -r web\backend\requirements.txt
 
 # 3. GPU Check

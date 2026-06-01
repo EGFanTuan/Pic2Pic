@@ -51,6 +51,9 @@
         @mouseup="handleMouseUp"
         @mouseleave="handleMouseUp"
       ></canvas>
+      <div class="canvas-size-indicator">
+        {{ width }} × {{ height }}
+      </div>
     </div>
 
     <div class="canvas-info">
@@ -66,15 +69,23 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 const props = defineProps({
   width: {
     type: Number,
-    default: 800
+    default: 512
   },
   height: {
     type: Number,
-    default: 1000
+    default: 768
   },
   autoResize: {
     type: Boolean,
-    default: true
+    default: false
+  },
+  maxWidth: {
+    type: Number,
+    default: 512
+  },
+  maxHeight: {
+    type: Number,
+    default: 768
   }
 })
 
@@ -103,19 +114,51 @@ const initCanvas = () => {
   if (!canvas.value) return
   
   ctx.value = canvas.value.getContext('2d')
-  clearCanvas()
+  drawGridBackground()
   saveToHistory()
+}
+
+const drawGridBackground = () => {
+  if (!ctx.value || !canvas.value) return
+  
+  ctx.value.fillStyle = '#ffffff'
+  ctx.value.fillRect(0, 0, canvas.value.width, canvas.value.height)
+  
+  ctx.value.strokeStyle = '#f0f0f0'
+  ctx.value.lineWidth = 1
+  
+  const gridSize = 32
+  
+  for (let x = 0; x <= canvas.value.width; x += gridSize) {
+    ctx.value.beginPath()
+    ctx.value.moveTo(x, 0)
+    ctx.value.lineTo(x, canvas.value.height)
+    ctx.value.stroke()
+  }
+  
+  for (let y = 0; y <= canvas.value.height; y += gridSize) {
+    ctx.value.beginPath()
+    ctx.value.moveTo(0, y)
+    ctx.value.lineTo(canvas.value.width, y)
+    ctx.value.stroke()
+  }
+  
+  ctx.value.strokeStyle = '#e0e0e0'
+  ctx.value.lineWidth = 2
+  
+  ctx.value.beginPath()
+  ctx.value.moveTo(0, 0)
+  ctx.value.lineTo(canvas.value.width, 0)
+  ctx.value.lineTo(canvas.value.width, canvas.value.height)
+  ctx.value.lineTo(0, canvas.value.height)
+  ctx.value.lineTo(0, 0)
+  ctx.value.stroke()
 }
 
 const clearCanvas = () => {
   if (!ctx.value || !canvas.value) return
   
-  ctx.value.fillStyle = '#ffffff'
-  ctx.value.fillRect(0, 0, canvas.value.width, canvas.value.height)
-  ctx.value.lineCap = 'round'
-  ctx.value.lineJoin = 'round'
-  ctx.value.strokeStyle = 'rgba(0, 0, 0, 0.5)'
-  ctx.value.lineWidth = lineWidth.value
+  drawGridBackground()
 }
 
 const saveToHistory = () => {
@@ -145,18 +188,12 @@ const setMode = (newMode) => {
 const getCanvasCoordinates = (event) => {
   const rect = canvas.value.getBoundingClientRect()
   
-  // 考虑到 object-fit: contain 引起的缩放和 letterboxing（留白）
-  const scale = Math.min(rect.width / canvas.value.width, rect.height / canvas.value.height)
-  const displayedWidth = canvas.value.width * scale
-  const displayedHeight = canvas.value.height * scale
-  
-  // object-fit: contain 会使内容居中
-  const offsetX = (rect.width - displayedWidth) / 2
-  const offsetY = (rect.height - displayedHeight) / 2
+  const scaleX = canvas.value.width / rect.width
+  const scaleY = canvas.value.height / rect.height
   
   return {
-    x: (event.clientX - rect.left - offsetX) / scale,
-    y: (event.clientY - rect.top - offsetY) / scale
+    x: (event.clientX - rect.left) * scaleX,
+    y: (event.clientY - rect.top) * scaleY
   }
 }
 
@@ -170,6 +207,15 @@ const handleMouseDown = (event) => {
   
   ctx.value.beginPath()
   ctx.value.moveTo(coords.x, coords.y)
+  ctx.value.lineCap = 'round'
+  ctx.value.lineJoin = 'round'
+  ctx.value.lineWidth = lineWidth.value
+  
+  if (mode.value === 'erase') {
+    ctx.value.strokeStyle = '#ffffff'
+  } else {
+    ctx.value.strokeStyle = 'rgba(0, 0, 0, 0.5)'
+  }
 }
 
 const handleMouseMove = (event) => {
@@ -178,6 +224,8 @@ const handleMouseMove = (event) => {
   const coords = getCanvasCoordinates(event)
   
   ctx.value.lineWidth = lineWidth.value
+  ctx.value.lineCap = 'round'
+  ctx.value.lineJoin = 'round'
   ctx.value.globalCompositeOperation = 'source-over'
   
   if (mode.value === 'erase') {
@@ -275,15 +323,26 @@ const handleKeyDown = (event) => {
 const resizeCanvas = () => {
   if (!props.autoResize || !canvasWrapper.value || !canvas.value) return
   
-  const wrapperRect = canvasWrapper.value.getBoundingClientRect()
-    const availableWidth = Math.floor(wrapperRect.width)
-    const availableHeight = Math.floor(wrapperRect.height)
+  const containerRect = canvasWrapper.value.getBoundingClientRect()
+  
+  // 获取画布容器的实际可用尺寸
+  const availableWidth = Math.floor(containerRect.width)
+  const availableHeight = Math.floor(containerRect.height)
+  
+  // 计算合适的画布尺寸，保持1:1.5的比例
+  const targetWidth = Math.min(availableWidth, props.maxWidth)
+  const targetHeight = Math.min(availableHeight, props.maxHeight)
+  
+  // 确保尺寸是8的倍数（SD要求）
+  const finalWidth = Math.max(256, Math.floor(targetWidth / 8) * 8)
+  const finalHeight = Math.max(256, Math.floor(targetHeight / 8) * 8)
+  
+  // 只有当尺寸确实变化时才更新
+  if (finalWidth !== canvas.value.width || finalHeight !== canvas.value.height) {
+    const imageData = ctx.value ? ctx.value.getImageData(0, 0, canvas.value.width, canvas.value.height) : null
     
-    if (availableWidth > 0 && availableHeight > 0) {
-      const imageData = ctx.value ? ctx.value.getImageData(0, 0, canvas.value.width, canvas.value.height) : null
-      
-      canvas.value.width = availableWidth
-      canvas.value.height = availableHeight
+    canvas.value.width = finalWidth
+    canvas.value.height = finalHeight
     
     if (imageData) {
       clearCanvas()
@@ -292,8 +351,8 @@ const resizeCanvas = () => {
       clearCanvas()
     }
     
-    emit('update:width', availableWidth)
-    emit('update:height', availableHeight)
+    emit('update:width', finalWidth)
+    emit('update:height', finalHeight)
   }
 }
 
@@ -404,20 +463,48 @@ onUnmounted(() => {
   flex: 1;
   overflow: hidden;
   display: flex;
-  align-items: stretch;
-  justify-content: stretch;
-  background: rgba(255, 255, 255, 0.04);
-  padding: 0;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecef 100%);
+  padding: 20px;
   min-height: 400px;
+  position: relative;
+  border-radius: 8px;
 }
 
 canvas {
-  background: var(--panel);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transition: transform 0.2s ease;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 
+              0 0 0 2px #667eea,
+              inset 0 0 0 1px rgba(102, 126, 234, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  display: block;
+  border-radius: 4px;
+  cursor: crosshair;
+}
+
+canvas:hover {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2), 
+              0 0 0 3px #764ba2,
+              inset 0 0 0 1px rgba(118, 75, 162, 0.1);
+}
+
+.canvas-size-indicator {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(102, 126, 234, 0.9);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  backdrop-filter: blur(8px);
 }
 
 .canvas-info {
