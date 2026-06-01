@@ -82,6 +82,31 @@
       </div>
       
       <div class="sidebar">
+        <div class="sidebar-inner">
+          <div class="preview-section">
+          <div class="preview-header">
+            <h3>预览结果</h3>
+            <button v-if="stage1Url || finalUrl" @click="showResultModal = true" class="preview-expand-btn">
+              全屏查看
+            </button>
+          </div>
+          <div class="preview-content">
+            <div v-if="stage1Url" class="preview-image-container">
+              <img :src="stage1Url" alt="预览结果" class="preview-image" @click="showResultModal = true">
+              <div class="preview-label">预览</div>
+            </div>
+            <div v-if="finalUrl" class="preview-image-container">
+              <img :src="finalUrl" alt="最终结果" class="preview-image" @click="showResultModal = true">
+              <div class="preview-label">最终</div>
+            </div>
+            <div v-if="!stage1Url && !finalUrl" class="preview-placeholder">
+              <div class="placeholder-icon">🖼️</div>
+              <p>绘制后自动生成预览</p>
+              <p class="placeholder-hint">或点击"预览"按钮手动生成</p>
+            </div>
+          </div>
+        </div>
+        
         <div class="controls-section">
           <ControlPanel 
             v-model:prompt="prompt"
@@ -91,9 +116,11 @@
             v-model:settingsMode="settingsMode"
             :canvasWidth="canvasWidth"
             :canvasHeight="canvasHeight"
+            @update:canvasWidth="(val) => canvasWidth = val"
+            @update:canvasHeight="(val) => canvasHeight = val"
             :isGenerating="isGenerating"
             @generate="handleGenerate"
-            @preview="handlePreview"
+            @preview="handleAutoPreview"
           />
           
           <StyleSelector 
@@ -108,6 +135,7 @@
             :details="progressDetails"
             :showDetails="true"
           />
+        </div>
         </div>
       </div>
     </main>
@@ -134,8 +162,8 @@ import { useApiStore } from './stores/api'
 const apiStore = useApiStore()
 const canvasRef = ref(null)
 
-const canvasWidth = ref(400)
-const canvasHeight = ref(600)
+const canvasWidth = ref(512)
+const canvasHeight = ref(768)
 const prompt = ref('')
 const negativePrompt = ref('')
 const seed = ref(143)
@@ -146,11 +174,13 @@ const stage1Url = ref('')
 const cannyUrl = ref('')
 const finalUrl = ref('')
 const isGenerating = ref(false)
+const isPreviewing = ref(false)
 const showResultModal = ref(false)
 const progress = ref(0)
 const progressDetails = ref('')
 const selectedStyles = ref('')
 const selectedLora = ref(null)
+const previewDebounceTimer = ref(null)
 
 const statusText = ref('初始化中...')
 const statusClass = computed(() => {
@@ -178,9 +208,60 @@ const pollProgress = async () => {
   }
 }
 
-const handlePreviewUpdate = (previewData) => {
-  stage1Url.value = previewData.stage1
-  cannyUrl.value = previewData.canny
+const handlePreviewUpdate = async () => {
+  // 防抖处理，避免频繁绘制触发预览
+  if (previewDebounceTimer.value) {
+    clearTimeout(previewDebounceTimer.value)
+  }
+  
+  previewDebounceTimer.value = setTimeout(async () => {
+    await handleAutoPreview()
+  }, 1500)
+}
+
+const handleAutoPreview = async (extraParams = {}) => {
+  if (isPreviewing.value || isGenerating.value) return
+  
+  try {
+    isPreviewing.value = true
+    progressDetails.value = '生成预览...'
+    
+    const imageBlob = await canvasRef.value.getImageBlob()
+    
+    // 检查画布是否有内容
+    const canvas = canvasRef.value.$el.querySelector('canvas')
+    if (canvas) {
+      const ctx = canvas.getContext('2d')
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const hasContent = imageData.data.some((pixel, index) => index % 4 === 3 && pixel > 0)
+      
+      if (!hasContent) {
+        isPreviewing.value = false
+        return
+      }
+    }
+    
+    const result = await apiStore.preview(imageBlob, {
+      width: Math.floor(Math.min(canvasWidth.value, 512) / 8) * 8,
+      height: Math.floor(Math.min(canvasHeight.value, 768) / 8) * 8,
+      prompt: prompt.value,
+      negative_prompt: negativePrompt.value,
+      seed: seed.value,
+      output_format: outputFormat.value,
+      ...extraParams
+    })
+    
+    if (result.preview_urls) {
+      stage1Url.value = result.preview_urls.stage1
+      cannyUrl.value = result.preview_urls.canny
+    }
+    
+    statusText.value = '预览已更新'
+  } catch (error) {
+    console.warn('自动预览失败：', error.message)
+  } finally {
+    isPreviewing.value = false
+  }
 }
 
 const handlePreview = async (extraParams = {}) => {
@@ -289,8 +370,6 @@ onMounted(async () => {
         negativePrompt.value = negativePrompt.value || defaults.negative_prompt || ''
         seed.value = seed.value || defaults.seed || 143
         outputFormat.value = outputFormat.value || defaults.output_format || 'png'
-        canvasWidth.value = canvasWidth.value || defaults.width || 400
-        canvasHeight.value = canvasHeight.value || defaults.height || 600
       }
       
       if (apiStore.status === 'ready') {
@@ -538,11 +617,11 @@ onMounted(async () => {
 
 .main {
   display: flex;
-  gap: 20px;
-  padding: 24px;
+  gap: 16px;
+  padding: 16px;
   max-width: 1920px;
   margin: 0 auto;
-  min-height: calc(100vh - 100px);
+  min-height: calc(100vh - 70px);
   background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
   transition: all 0.3s ease;
 }
@@ -554,25 +633,53 @@ onMounted(async () => {
   border: 1px solid rgba(255, 255, 255, 0.8);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
   overflow: hidden;
-  min-width: 400px;
+  min-width: 500px;
+  max-width: calc(100% - 360px);
   transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 102px);
 }
 
 .canvas-section:hover {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-  transform: translateY(-2px);
 }
 
 .sidebar {
-  width: 380px;
+  width: 360px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  flex-shrink: 0;
+  height: calc(100vh - 102px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
 }
 
-.controls-section,
-.preview-section {
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.controls-section {
   background: #ffffff;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.8);
@@ -583,10 +690,162 @@ onMounted(async () => {
   transition: all 0.3s ease;
 }
 
+.preview-section {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  min-height: 280px;
+  max-height: 380px;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.preview-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px 16px 0 0;
+}
+
 .controls-section:hover,
 .preview-section:hover {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
   transform: translateY(-2px);
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.preview-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-header h3::before {
+  content: '🎨';
+  font-size: 18px;
+}
+
+.preview-expand-btn {
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #667eea;
+  background: transparent;
+  border: 2px solid #667eea;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+}
+
+.preview-expand-btn:hover {
+  background: #667eea;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.preview-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  background: linear-gradient(135deg, #fafbfc 0%, #f5f7fa 100%);
+}
+
+.preview-image-container {
+  position: relative;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: transform 0.3s, box-shadow 0.3s;
+  border: 2px solid transparent;
+}
+
+.preview-image-container:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  border-color: #667eea;
+}
+
+.preview-image {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.preview-label {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  color: white;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 20px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.preview-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 50px 30px;
+  text-align: center;
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  min-height: 200px;
+}
+
+.placeholder-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.6;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.preview-placeholder p {
+  margin: 6px 0;
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.placeholder-hint {
+  font-size: 12px !important;
+  color: #94a3b8 !important;
+  margin-top: 12px !important;
+  font-weight: 400 !important;
 }
 
 @media (max-width: 1200px) {
