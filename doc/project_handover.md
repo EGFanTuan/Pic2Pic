@@ -138,19 +138,30 @@
 
 - `GET /status`
   - 返回服务状态、设备、默认参数、普通模式预设
+  - 返回 `busy`、`current_task`（空闲时为 `null`）、`progress`
 
 - `POST /preview`
   - 仅跑 Stage1，用于前端自动预览
+  - 服务忙时返回 HTTP 429（结构化 JSON，见 4.3）
 
 - `POST /generate`
   - 跑完整 Stage1 + Stage2，返回最终图
+  - 服务忙时返回 HTTP 429（结构化 JSON，见 4.3）
+
+- `POST /switch_device`
+  - 在 CPU / CUDA 之间切换推理设备
+  - 推理或切换进行中时非阻塞返回 429（与 preview/generate 一致）
 
 - `GET /outputs/<filename>`
   - 读取输出目录中的图片
 
 ## 4.3 当前后端关键机制
 
-- 单飞行锁：同一时刻只允许一个生成任务（避免并发爆显存）
+- 单飞行锁：同一时刻只允许一个占锁任务（preview / generate / switch_device），避免并发爆显存
+- 服务忙时：preview / generate / switch_device 均使用非阻塞抢锁，失败返回 HTTP 429
+- 429 响应：保留 `error` 字符串，并附带 `code`、`busy`、`retry_after_seconds`、`current_task`；响应头 `Retry-After`
+- 任务状态：`GET /status` 返回 `current_task`（`task_id`、`type`、`started_at`、`elapsed_seconds`），空闲时为 `null`
+- generate 与 preview 均在持锁后解析上传（忙时不做无效 body 解析）
 - 参数解析：统一通过 `_parse_generation_params`
 - 安全前缀：`negative_prompt` 会强制追加 NSFW 前缀
 - NSFW 拦截：若 Stage1/Stage2 任一标记为 NSFW，返回 warning 并阻断图片下发
