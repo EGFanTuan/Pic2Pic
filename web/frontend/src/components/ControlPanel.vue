@@ -169,6 +169,31 @@
           🎨 生成
         </button>
       </div>
+
+      <!-- 预览结果内嵌区域 -->
+      <div class="inline-preview">
+        <div class="inline-preview-header">
+          <h3>预览结果</h3>
+          <button v-if="stage1Url || finalUrl" @click="$emit('expand')" class="preview-expand-btn">
+            全屏查看
+          </button>
+        </div>
+        <div class="inline-preview-content">
+          <div v-if="stage1Url" class="preview-image-container">
+            <img :src="stage1Url" alt="预览结果" class="preview-image" @click="$emit('expand')">
+            <div class="preview-label">预览</div>
+          </div>
+          <div v-if="finalUrl" class="preview-image-container">
+            <img :src="finalUrl" alt="最终结果" class="preview-image" @click="$emit('expand')">
+            <div class="preview-label">最终</div>
+          </div>
+          <div v-if="!stage1Url && !finalUrl" class="preview-placeholder">
+            <div class="placeholder-icon">🖼️</div>
+            <p>绘制后自动生成预览</p>
+            <p class="placeholder-hint">或点击"预览"按钮手动生成</p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -186,7 +211,9 @@ const props = defineProps({
   qualityPreset: String,
   canvasWidth: Number,
   canvasHeight: Number,
-  isGenerating: Boolean
+  isGenerating: Boolean,
+  stage1Url: String,
+  finalUrl: String
 })
 
 const emit = defineEmits([
@@ -199,7 +226,8 @@ const emit = defineEmits([
   'update:canvasWidth',
   'update:canvasHeight',
   'generate',
-  'preview'
+  'preview',
+  'expand'
 ])
 
 const apiStore = useApiStore()
@@ -622,5 +650,109 @@ const getGenerationParams = () => {
 textarea {
   resize: vertical;
   min-height: 80px;
+}
+
+/* 内嵌预览结果 */
+.inline-preview {
+  border-top: 1px solid var(--line);
+  background: linear-gradient(135deg, #fafbfc 0%, #f5f7fa 100%);
+}
+
+.inline-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.inline-preview-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.preview-expand-btn {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #667eea;
+  background: transparent;
+  border: 1px solid #667eea;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.preview-expand-btn:hover {
+  background: #667eea;
+  color: white;
+}
+
+.inline-preview-content {
+  padding: 12px 16px;
+}
+
+.preview-image-container {
+  position: relative;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  border: 2px solid transparent;
+}
+
+.preview-image-container:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+  border-color: #667eea;
+}
+
+.preview-image {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.preview-label {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: white;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+}
+
+.preview-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 20px;
+  text-align: center;
+  border: 2px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  min-height: 120px;
+}
+
+.placeholder-icon {
+  font-size: 40px;
+  margin-bottom: 8px;
+  opacity: 0.6;
+}
+
+.preview-placeholder p {
+  margin: 4px 0;
+  font-size: 12px;
+  color: #64748b;
 }
 </style>

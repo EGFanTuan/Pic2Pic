@@ -83,30 +83,6 @@
       
       <div class="sidebar">
         <div class="sidebar-inner">
-          <div class="preview-section">
-          <div class="preview-header">
-            <h3>预览结果</h3>
-            <button v-if="stage1Url || finalUrl" @click="showResultModal = true" class="preview-expand-btn">
-              全屏查看
-            </button>
-          </div>
-          <div class="preview-content">
-            <div v-if="stage1Url" class="preview-image-container">
-              <img :src="stage1Url" alt="预览结果" class="preview-image" @click="showResultModal = true">
-              <div class="preview-label">预览</div>
-            </div>
-            <div v-if="finalUrl" class="preview-image-container">
-              <img :src="finalUrl" alt="最终结果" class="preview-image" @click="showResultModal = true">
-              <div class="preview-label">最终</div>
-            </div>
-            <div v-if="!stage1Url && !finalUrl" class="preview-placeholder">
-              <div class="placeholder-icon">🖼️</div>
-              <p>绘制后自动生成预览</p>
-              <p class="placeholder-hint">或点击"预览"按钮手动生成</p>
-            </div>
-          </div>
-        </div>
-        
         <div class="controls-section">
           <ControlPanel 
             v-model:prompt="prompt"
@@ -117,11 +93,14 @@
             v-model:qualityPreset="qualityPreset"
             :canvasWidth="canvasWidth"
             :canvasHeight="canvasHeight"
+            :stage1Url="stage1Url"
+            :finalUrl="finalUrl"
             @update:canvasWidth="(val) => canvasWidth = val"
             @update:canvasHeight="(val) => canvasHeight = val"
             :isGenerating="isGenerating"
             @generate="handleGenerate"
             @preview="handleAutoPreview"
+            @expand="showResultModal = true"
           />
           
           <StyleSelector 
@@ -728,157 +707,6 @@ watch(qualityPreset, () => {
   transition: all 0.3s ease;
 }
 
-.preview-section {
-  background: #ffffff;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-  min-height: 280px;
-  max-height: 380px;
-  transition: all 0.3s ease;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-}
-
-.preview-section::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-  border-radius: 16px 16px 0 0;
-}
-
-.controls-section:hover,
-.preview-section:hover {
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-  transform: translateY(-2px);
-}
-
-.preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid #e2e8f0;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-}
-
-.preview-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 700;
-  color: #334155;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.preview-header h3::before {
-  content: '🎨';
-  font-size: 18px;
-}
-
-.preview-expand-btn {
-  padding: 6px 16px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #667eea;
-  background: transparent;
-  border: 2px solid #667eea;
-  border-radius: 20px;
-  cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
-}
-
-.preview-expand-btn:hover {
-  background: #667eea;
-  color: white;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-}
-
-.preview-content {
-  flex: 1;
-  padding: 20px;
-  overflow-y: auto;
-  background: linear-gradient(135deg, #fafbfc 0%, #f5f7fa 100%);
-}
-
-.preview-image-container {
-  position: relative;
-  margin-bottom: 16px;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
-  cursor: pointer;
-  transition: transform 0.3s, box-shadow 0.3s;
-  border: 2px solid transparent;
-}
-
-.preview-image-container:hover {
-  transform: translateY(-4px) scale(1.02);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
-  border-color: #667eea;
-}
-
-.preview-image {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-.preview-label {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  padding: 6px 16px;
-  font-size: 12px;
-  font-weight: 700;
-  color: white;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 20px;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-}
-
-.preview-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 50px 30px;
-  text-align: center;
-  border: 2px dashed #cbd5e1;
-  border-radius: 12px;
-  background: #f8fafc;
-  min-height: 200px;
-}
-
-.placeholder-icon {
-  font-size: 64px;
-  margin-bottom: 16px;
-  opacity: 0.6;
-  animation: float 3s ease-in-out infinite;
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
-}
-
-.preview-placeholder p {
-  margin: 6px 0;
-  font-size: 14px;
-  color: #64748b;
-  font-weight: 500;
-}
-
 .placeholder-hint {
   font-size: 12px !important;
   color: #94a3b8 !important;
@@ -900,8 +728,7 @@ watch(qualityPreset, () => {
     flex-direction: row;
   }
   
-  .controls-section,
-  .preview-section {
+  .controls-section {
     flex: 1;
   }
 }
@@ -942,8 +769,7 @@ watch(qualityPreset, () => {
 }
 
 .canvas-section,
-.controls-section,
-.preview-section {
+.controls-section {
   animation: fadeIn 0.5s ease-out;
 }
 
