@@ -39,15 +39,22 @@
 
 页面会调用以下接口：
 
-- `GET /status`：查看服务状态（ready/busy/device）并拉取默认参数与普通模式预设
+- `GET /status`：查看服务状态（ready/busy/device/current_task/progress）并拉取默认参数与普通模式预设
 - `POST /preview`：上传画布 PNG + 参数 JSON，仅执行 Stage1 并返回预览图
 - `POST /generate`：上传画布 PNG + 参数 JSON
+- `POST /switch_device`：JSON `{ "device": "cpu" | "cuda" }` 切换推理设备
 - `GET /outputs/<filename>`：加载输出图片用于预览
 
 ## 备注
 
 - 默认画布是 `400x600`，和项目默认参数一致。
-- 若服务返回 `429`，表示当前有任务在生成中，稍后重试。
+- 若服务返回 `429`，表示当前有占锁任务在执行（预览 / 完整生成 / 切换设备），请稍后重试。响应体示例：
+  - `error`：中文说明（前端可直接展示）
+  - `code`：`server_busy`
+  - `retry_after_seconds`：建议重试间隔（秒）
+  - `current_task`：当前占锁任务信息（`type` 为 `preview` / `generate` / `switch_device`）
+  - 响应头 `Retry-After` 与 `retry_after_seconds` 一致
+- `GET /status` 在空闲时 `current_task` 为 `null`；忙时与 429 中结构相同。
 - 页面结果区顺序为：Stage1 预览 → Final 输出 → Canny。
 - 若修改了端口，请按实际端口访问。
 - 若画布为空，前端会跳过自动预览，避免无效推理请求。

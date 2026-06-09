@@ -10,7 +10,7 @@ if PROJECT_ROOT not in sys.path:
 import torch
 import argparse
 from threading import Lock
-from typing import Any, Dict, Tuple, cast
+from typing import Any, Dict, Optional, Tuple, cast
 from PIL import Image
 import io
 import json
@@ -37,6 +37,7 @@ gpu_name = None
 server_config = None
 generation_lock = Lock()
 MANDATORY_NEGATIVE_PREFIX = 'not safe fot work, not suitable for work, NSFW'
+RETRY_AFTER_SECONDS = 5
 
 # Progress tracking
 progress_state = {
@@ -45,6 +46,20 @@ progress_state = {
     'details': ''
 }
 
+# Active task metadata while generation_lock is held
+current_task_state = {
+    'task_id': None,
+    'type': None,  # 'preview' | 'generate' | 'switch_device'
+    'started_at': None,
+}
+
+_BUSY_MESSAGES = {
+    'preview': '服务器正在执行预览任务，请稍后重试',
+    'generate': '服务器正在执行完整生成，请稍后重试',
+    'switch_device': '服务器正在切换计算设备，请稍后重试',
+}
+
+
 def update_progress(percentage: int, status: str = None, details: str = None):
     global progress_state
     progress_state['percentage'] = min(max(percentage, 0), 100)
@@ -52,6 +67,65 @@ def update_progress(percentage: int, status: str = None, details: str = None):
         progress_state['status'] = status
     if details is not None:
         progress_state['details'] = details
+
+
+def _current_task_snapshot() -> Optional[Dict[str, Any]]:
+    """Return public current-task info, or None when idle."""
+    if not generation_lock.locked() or current_task_state['task_id'] is None:
+        return None
+    started_at = current_task_state['started_at']
+    elapsed_seconds = int(time.time() - started_at) if started_at else 0
+    return {
+        'task_id': current_task_state['task_id'],
+        'type': current_task_state['type'],
+        'started_at': started_at,
+        'elapsed_seconds': max(elapsed_seconds, 0),
+    }
+
+
+def _busy_message_for_task(task_type: Optional[str]) -> str:
+    if task_type in _BUSY_MESSAGES:
+        return _BUSY_MESSAGES[task_type]
+    return '服务器繁忙，请稍后重试'
+
+
+def _busy_json_body() -> Dict[str, Any]:
+    snapshot = _current_task_snapshot()
+    task_type = snapshot['type'] if snapshot else None
+    return {
+        'error': _busy_message_for_task(task_type),
+        'code': 'server_busy',
+        'busy': True,
+        'retry_after_seconds': RETRY_AFTER_SECONDS,
+        'current_task': snapshot,
+    }
+
+
+def _busy_response():
+    response = jsonify(_busy_json_body())
+    response.status_code = 429
+    response.headers['Retry-After'] = str(RETRY_AFTER_SECONDS)
+    return response
+
+
+def _try_acquire_task(task_type: str) -> Tuple[bool, Any]:
+    """Try to acquire generation_lock and register current task metadata."""
+    if not generation_lock.acquire(blocking=False):
+        return False, _busy_response()
+    current_task_state['task_id'] = str(uuid.uuid4())[:8]
+    current_task_state['type'] = task_type
+    current_task_state['started_at'] = int(time.time())
+    return True, None
+
+
+def _release_task(reset_progress_idle: bool = True):
+    """Release generation_lock and clear current task metadata."""
+    current_task_state['task_id'] = None
+    current_task_state['type'] = None
+    current_task_state['started_at'] = None
+    generation_lock.release()
+    if reset_progress_idle:
+        update_progress(0, status='idle', details='')
 
 DEFAULT_GENERATION_PARAMS: Dict[str, Any] = {
     'prompt': 'masterpiece, best quality, anime style \n',
@@ -549,8 +623,9 @@ def handle_preview():
     if pipe is None:
         return jsonify({'error': 'Model is not ready'}), 503
 
-    if not generation_lock.acquire(blocking=False):
-        return jsonify({'error': 'Server is busy generating. Please retry shortly.'}), 429
+    acquired, busy_response = _try_acquire_task('preview')
+    if not acquired:
+        return busy_response
 
     try:
         control_image, params = _load_request_image_and_params()
@@ -566,8 +641,7 @@ def handle_preview():
     except Exception as e:
         return jsonify({'error': f'Preview failed: {e}'}), 500
     finally:
-        generation_lock.release()
-        update_progress(0, status='idle', details='')
+        _release_task(reset_progress_idle=True)
 
     if stage1_nsfw:
         return jsonify({
@@ -609,16 +683,16 @@ def handle_generate():
     if pipe is None:
         return jsonify({'error': 'Model is not ready'}), 503
 
-    try:
-        control_image, params = _load_request_image_and_params()
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-    
-    # Generate (single-flight to avoid concurrent GPU OOM/race)
-    if not generation_lock.acquire(blocking=False):
-        return jsonify({'error': 'Server is busy generating. Please retry shortly.'}), 429
+    acquired, busy_response = _try_acquire_task('generate')
+    if not acquired:
+        return busy_response
 
     try:
+        try:
+            control_image, params = _load_request_image_and_params()
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
         update_progress(0, status='generating', details='Starting generation...')
         final_image, stage1_image, canny_image, resolved_params, stage1_nsfw, stage2_nsfw = generate_image(
             control_image, params
@@ -628,8 +702,7 @@ def handle_generate():
     except Exception as e:
         return jsonify({'error': f'Generation failed: {e}'}), 500
     finally:
-        generation_lock.release()
-        update_progress(0, status='idle', details='')
+        _release_task(reset_progress_idle=True)
 
     if server_config is None:
         return jsonify({'error': 'Server config is not initialized'}), 500
@@ -705,6 +778,7 @@ def status():
     return jsonify({
         'status': 'ready' if pipe is not None else 'initializing',
         'busy': generation_lock.locked(),
+        'current_task': _current_task_snapshot(),
         'device': device,
         'gpu_name': gpu_name,
         'progress': progress_state,
@@ -734,28 +808,33 @@ def switch_device():
     
     if pipe is None:
         return jsonify({'error': 'Server not ready'}), 400
-        
+
     target = request.json.get('device', 'cpu')
     if target == 'cuda' and not torch.cuda.is_available():
         return jsonify({'error': 'CUDA not available'}), 400
-        
-    with generation_lock:
-        try:
-            device = target
-            if pipe:
-                # Cast to float32 for CPU (fp16 not supported on CPU)
-                # Cast to float16 for GPU (performance/memory optimization)
-                dtype = torch.float16 if device == 'cuda' else torch.float32
-                pipe = pipe.to(device=device, dtype=dtype)
-                
-            # Update stage pipelines
-            if pipe_stage2 and pipe:
-                pipe_stage2 = StableDiffusionControlNetImg2ImgPipeline(**pipe.components)
-                pipe_stage2.controlnet = controlnet_scribble
-            
-            return jsonify({'status': 'success', 'device': device, 'gpu_name': gpu_name})
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+
+    if target == device:
+        return jsonify({'status': 'success', 'device': device, 'gpu_name': gpu_name})
+
+    acquired, busy_response = _try_acquire_task('switch_device')
+    if not acquired:
+        return busy_response
+
+    try:
+        device = target
+        if pipe:
+            dtype = torch.float16 if device == 'cuda' else torch.float32
+            pipe = pipe.to(device=device, dtype=dtype)
+
+        if pipe_stage2 and pipe:
+            pipe_stage2 = StableDiffusionControlNetImg2ImgPipeline(**pipe.components)
+            pipe_stage2.controlnet = controlnet_scribble
+
+        return jsonify({'status': 'success', 'device': device, 'gpu_name': gpu_name})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        _release_task(reset_progress_idle=False)
 
 if __name__ == '__main__':
     config = parse_server_args()
