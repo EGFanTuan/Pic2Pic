@@ -208,7 +208,7 @@ PROMPT_PRESETS: Dict[str, Dict[str, str]] = {
     },
     'anime': {
         'label': '🌸 动漫风格',
-        'prompt': 'anime style, vibrant colors, clean lineart, detailed, studio quality, trending on pixiv',
+        'prompt': 'anime style, clean lineart, detailed, studio quality',
     },
     'conceptart': {
         'label': '🎬 概念艺术',
