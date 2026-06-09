@@ -212,6 +212,10 @@ const promptPresets = computed(() => {
     cyberpunk: { label: '🌃 赛博朋克', prompt: '' },
     inkwash: { label: '🖌️ 水墨画', prompt: '' },
     ghibli: { label: '🌿 宫崎骏风', prompt: '' },
+    highquality: { label: '✨ 高质量通用', prompt: '' },
+    realistic: { label: '📷 写实摄影', prompt: '' },
+    anime: { label: '🌸 动漫风格', prompt: '' },
+    conceptart: { label: '🎬 概念艺术', prompt: '' },
   }
 })
 

@@ -124,6 +124,22 @@ PROMPT_PRESETS: Dict[str, Dict[str, str]] = {
         'label': '🌿 宫崎骏风',
         'prompt': 'studio ghibli style, hayao miyazaki, hand-drawn animation, soft colors, dreamy atmosphere, nature, magical realism, nostalgic',
     },
+    'highquality': {
+        'label': '✨ 高质量通用',
+        'prompt': 'masterpiece, best quality, highly detailed, 8k, sharp focus, professional',
+    },
+    'realistic': {
+        'label': '📷 写实摄影',
+        'prompt': 'photorealistic, realistic photography, detailed, natural lighting, 35mm, sharp focus, 8k',
+    },
+    'anime': {
+        'label': '🌸 动漫风格',
+        'prompt': 'anime style, vibrant colors, clean lineart, detailed, studio quality, trending on pixiv',
+    },
+    'conceptart': {
+        'label': '🎬 概念艺术',
+        'prompt': 'concept art, cinematic lighting, dramatic composition, trending on artstation, digital painting, atmospheric',
+    },
 }
 
 
