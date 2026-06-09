@@ -17,6 +17,7 @@ export const useApiStore = defineStore('api', {
     basicModeDefaultPreset: 'Normal',
     basicModeNote: '',
     promptPresets: null,
+    contentPresets: null,
     progress: {
       percentage: 0,
       status: 'idle',
@@ -28,7 +29,8 @@ export const useApiStore = defineStore('api', {
     isReady: (state) => state.status === 'ready' && !state.busy,
     getDefaults: (state) => state.defaults,
     getBasicModePresets: (state) => state.basicModePresets,
-    getPromptPresets: (state) => state.promptPresets
+    getPromptPresets: (state) => state.promptPresets,
+    getContentPresets: (state) => state.contentPresets
   },
 
   actions: {
@@ -51,6 +53,10 @@ export const useApiStore = defineStore('api', {
         
         if (data.prompt_presets) {
           this.promptPresets = data.prompt_presets
+        }
+        
+        if (data.content_presets) {
+          this.contentPresets = data.content_presets
         }
         
         if (data.progress) {

@@ -29,15 +29,25 @@
       </div>
 
       <div class="section">
+        <label>画面内容</label>
+        <select v-model="selectedContentPreset" class="prompt-preset-select">
+          <option v-for="(preset, key) in contentPresets" :key="key" :value="key">
+            {{ preset.label }}
+          </option>
+        </select>
+      </div>
+
+      <div class="section">
         <label>提示词</label>
         <div class="prompt-combined">
-          <span v-if="selectedPromptPreset !== 'none'" class="preset-prefix">{{ presetPromptText }}</span>
+          <span v-if="selectedPromptPreset !== 'none'" class="preset-prefix style-prefix">{{ presetPromptText }}</span>
+          <span v-if="selectedContentPreset !== 'none'" class="preset-prefix content-prefix">{{ contentPromptText }}</span>
           <textarea 
             v-model="userPromptText"
-            rows="4"
-            :placeholder="selectedPromptPreset === 'none' ? '描述你想要生成的图像...' : '在此追加你的描述...'"
+            rows="3"
+            :placeholder="placeholderText"
             class="user-prompt-input"
-            :class="{ 'has-preset': selectedPromptPreset !== 'none' }"
+            :class="{ 'has-preset': hasAnyPreset }"
           ></textarea>
         </div>
       </div>
@@ -203,6 +213,7 @@ const localOutputFormat = ref(props.outputFormat || 'png')
 const localSettingsMode = ref(props.settingsMode || 'basic')
 const selectedPreset = ref(props.qualityPreset || 'Normal')
 const selectedPromptPreset = ref('none')
+const selectedContentPreset = ref('none')
 const userPromptText = ref('')
 
 const promptPresets = computed(() => {
@@ -224,15 +235,38 @@ const presetPromptText = computed(() => {
   return preset ? preset.prompt : ''
 })
 
-const buildFullPrompt = () => {
-  const preset = presetPromptText.value
-  const user = userPromptText.value.trim()
-  if (preset && user) {
-    return preset + ', ' + user
-  } else if (preset) {
-    return preset
+const contentPresets = computed(() => {
+  return apiStore.contentPresets || {
+    none: { label: '不限内容', prompt: '' },
+    portrait: { label: '👤 人物肖像', prompt: '' },
+    landscape: { label: '🏞️ 自然风景', prompt: '' },
+    city: { label: '🏙️ 城市建筑', prompt: '' },
+    animal: { label: '🐾 动物', prompt: '' },
+    scifi: { label: '🚀 科幻太空', prompt: '' },
+    fantasy: { label: '🐉 幻想世界', prompt: '' },
   }
-  return user
+})
+
+const contentPromptText = computed(() => {
+  const preset = contentPresets.value[selectedContentPreset.value]
+  return preset ? preset.prompt : ''
+})
+
+const hasAnyPreset = computed(() => {
+  return selectedPromptPreset.value !== 'none' || selectedContentPreset.value !== 'none'
+})
+
+const placeholderText = computed(() => {
+  if (hasAnyPreset.value) return '在此追加你的描述...'
+  return '描述你想要生成的图像...'
+})
+
+const buildFullPrompt = () => {
+  const parts = []
+  if (presetPromptText.value) parts.push(presetPromptText.value)
+  if (contentPromptText.value) parts.push(contentPromptText.value)
+  if (userPromptText.value.trim()) parts.push(userPromptText.value.trim())
+  return parts.join(', ')
 }
 
 const basicModeNote = computed(() => apiStore.basicModeNote || '普通模式会自动设置关键控制强度')
@@ -349,6 +383,11 @@ watch(userPromptText, () => {
 })
 
 watch(selectedPromptPreset, () => {
+  userPromptText.value = ''
+  syncFullPrompt()
+})
+
+watch(selectedContentPreset, () => {
   userPromptText.value = ''
   syncFullPrompt()
 })
@@ -529,16 +568,25 @@ const getGenerationParams = () => {
 }
 
 .preset-prefix {
-  padding: 8px 10px 4px 10px;
-  color: #8b9dc3;
+  padding: 6px 10px 2px 10px;
   font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
   user-select: none;
+  font-style: italic;
+}
+
+.style-prefix {
+  color: #8b9dc3;
   background: rgba(102, 126, 234, 0.06);
   border-bottom: 1px dashed rgba(102, 126, 234, 0.2);
-  font-style: italic;
+}
+
+.content-prefix {
+  color: #7ecb8a;
+  background: rgba(126, 203, 138, 0.06);
+  border-bottom: 1px dashed rgba(126, 203, 138, 0.2);
 }
 
 .user-prompt-input {

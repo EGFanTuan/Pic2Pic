@@ -142,6 +142,37 @@ PROMPT_PRESETS: Dict[str, Dict[str, str]] = {
     },
 }
 
+CONTENT_PRESETS: Dict[str, Dict[str, str]] = {
+    'none': {
+        'label': '不限内容',
+        'prompt': '',
+    },
+    'portrait': {
+        'label': '👤 人物肖像',
+        'prompt': 'portrait of a person, detailed face, expressive eyes, professional lighting',
+    },
+    'landscape': {
+        'label': '🏞️ 自然风景',
+        'prompt': 'beautiful landscape, nature scenery, mountains, trees, river, breathtaking view',
+    },
+    'city': {
+        'label': '🏙️ 城市建筑',
+        'prompt': 'city architecture, urban landscape, buildings, streets, modern metropolis',
+    },
+    'animal': {
+        'label': '🐾 动物',
+        'prompt': 'animal, wildlife, detailed fur, natural habitat, cute',
+    },
+    'scifi': {
+        'label': '🚀 科幻太空',
+        'prompt': 'sci-fi, space, stars, planets, futuristic technology, cosmic, nebula',
+    },
+    'fantasy': {
+        'label': '🐉 幻想世界',
+        'prompt': 'fantasy world, magical, mythical, enchanted forest, castle, dragons, ethereal',
+    },
+}
+
 
 def _to_bool(value: Any) -> bool:
     """
@@ -684,6 +715,7 @@ def status():
             'note': '普通模式会自动设置三项关键控制强度（S1 Scribble / S1 Canny / S2 Scribble）。',
         },
         'prompt_presets': PROMPT_PRESETS,
+        'content_presets': CONTENT_PRESETS,
         'config': {
             'checkpoint_name': server_config.checkpoint_name if server_config else None,
             'width': server_config.width if server_config else None,
