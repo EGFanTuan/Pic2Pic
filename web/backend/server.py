@@ -103,6 +103,29 @@ BASIC_MODE_PRESETS: Dict[str, Dict[str, Any]] = {
 
 DEFAULT_BASIC_MODE_PRESET = 'Normal'
 
+PROMPT_PRESETS: Dict[str, Dict[str, str]] = {
+    'none': {
+        'label': '无预设',
+        'prompt': '',
+    },
+    'pixar3d': {
+        'label': '🎨 皮克斯 3D',
+        'prompt': 'pixar style, 3d render, cute, vibrant colors, smooth lighting, disney animation style, highly detailed, octane render',
+    },
+    'cyberpunk': {
+        'label': '🌃 赛博朋克',
+        'prompt': 'cyberpunk style, neon lights, futuristic city, high tech, low life, rain, blade runner aesthetic, synthwave, dark atmosphere, glowing',
+    },
+    'inkwash': {
+        'label': '🖌️ 水墨画',
+        'prompt': 'traditional chinese ink wash painting, sumi-e style, brush strokes, minimalist, elegant, rice paper texture, artistic, zen atmosphere',
+    },
+    'ghibli': {
+        'label': '🌿 宫崎骏风',
+        'prompt': 'studio ghibli style, hayao miyazaki, hand-drawn animation, soft colors, dreamy atmosphere, nature, magical realism, nostalgic',
+    },
+}
+
 
 def _to_bool(value: Any) -> bool:
     """
@@ -644,6 +667,7 @@ def status():
             'presets': BASIC_MODE_PRESETS,
             'note': '普通模式会自动设置三项关键控制强度（S1 Scribble / S1 Canny / S2 Scribble）。',
         },
+        'prompt_presets': PROMPT_PRESETS,
         'config': {
             'checkpoint_name': server_config.checkpoint_name if server_config else None,
             'width': server_config.width if server_config else None,

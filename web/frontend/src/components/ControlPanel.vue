@@ -20,12 +20,26 @@
 
     <div class="panel-body">
       <div class="section">
+        <label>提示词预设</label>
+        <select v-model="selectedPromptPreset" class="prompt-preset-select">
+          <option v-for="(preset, key) in promptPresets" :key="key" :value="key">
+            {{ preset.label }}
+          </option>
+        </select>
+      </div>
+
+      <div class="section">
         <label>提示词</label>
-        <textarea 
-          v-model="localPrompt"
-          rows="4"
-          placeholder="描述你想要生成的图像..."
-        ></textarea>
+        <div class="prompt-combined">
+          <span v-if="selectedPromptPreset !== 'none'" class="preset-prefix">{{ presetPromptText }}</span>
+          <textarea 
+            v-model="userPromptText"
+            rows="4"
+            :placeholder="selectedPromptPreset === 'none' ? '描述你想要生成的图像...' : '在此追加你的描述...'"
+            class="user-prompt-input"
+            :class="{ 'has-preset': selectedPromptPreset !== 'none' }"
+          ></textarea>
+        </div>
       </div>
 
       <div class="section">
@@ -150,7 +164,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useApiStore } from '../stores/api'
 
 const props = defineProps({
@@ -188,6 +202,34 @@ const localSeed = ref(props.seed || 143)
 const localOutputFormat = ref(props.outputFormat || 'png')
 const localSettingsMode = ref(props.settingsMode || 'basic')
 const selectedPreset = ref(props.qualityPreset || 'Normal')
+const selectedPromptPreset = ref('none')
+const userPromptText = ref('')
+
+const promptPresets = computed(() => {
+  return apiStore.promptPresets || {
+    none: { label: '无预设', prompt: '' },
+    pixar3d: { label: '🎨 皮克斯 3D', prompt: '' },
+    cyberpunk: { label: '🌃 赛博朋克', prompt: '' },
+    inkwash: { label: '🖌️ 水墨画', prompt: '' },
+    ghibli: { label: '🌿 宫崎骏风', prompt: '' },
+  }
+})
+
+const presetPromptText = computed(() => {
+  const preset = promptPresets.value[selectedPromptPreset.value]
+  return preset ? preset.prompt : ''
+})
+
+const buildFullPrompt = () => {
+  const preset = presetPromptText.value
+  const user = userPromptText.value.trim()
+  if (preset && user) {
+    return preset + ', ' + user
+  } else if (preset) {
+    return preset
+  }
+  return user
+}
 
 const basicModeNote = computed(() => apiStore.basicModeNote || '普通模式会自动设置关键控制强度')
 
@@ -253,7 +295,12 @@ watch(() => props.canvasHeight, (newVal) => {
 })
 
 watch(() => props.prompt, (newVal) => {
-  if (newVal !== undefined && newVal !== localPrompt.value) localPrompt.value = newVal
+  // 仅当外部 prompt 与当前构建的不同时才同步（避免循环）
+  if (newVal !== undefined && newVal !== localPrompt.value) {
+    if (selectedPromptPreset.value === 'none') {
+      userPromptText.value = newVal || ''
+    }
+  }
 })
 
 watch(() => props.negativePrompt, (newVal) => {
@@ -286,6 +333,20 @@ watch(localHeight, (newVal) => {
 
 watch(localPrompt, (newVal) => {
   emit('update:prompt', newVal)
+})
+
+// 当用户文本或预设变化时，构建完整提示词并 emit
+const syncFullPrompt = () => {
+  localPrompt.value = buildFullPrompt()
+}
+
+watch(userPromptText, () => {
+  syncFullPrompt()
+})
+
+watch(selectedPromptPreset, () => {
+  userPromptText.value = ''
+  syncFullPrompt()
 })
 
 watch(localNegativePrompt, (newVal) => {
@@ -445,6 +506,65 @@ const getGenerationParams = () => {
 
 .advanced-mode .row:last-child {
   margin-bottom: 0;
+}
+
+/* 提示词预设选择器 */
+.prompt-preset-select {
+  width: 100%;
+}
+
+/* 提示词组合输入框 */
+.prompt-combined {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--border-radius);
+  background: var(--panel);
+  overflow: hidden;
+  min-height: 80px;
+}
+
+.preset-prefix {
+  padding: 8px 10px 4px 10px;
+  color: #8b9dc3;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: none;
+  background: rgba(102, 126, 234, 0.06);
+  border-bottom: 1px dashed rgba(102, 126, 234, 0.2);
+  font-style: italic;
+}
+
+.user-prompt-input {
+  flex: 1;
+  border: none !important;
+  background: transparent;
+  padding: 8px 10px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  min-height: 60px;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 0;
+}
+
+.user-prompt-input::placeholder {
+  color: var(--sub);
+}
+
+.user-prompt-input.has-preset {
+  padding-top: 4px;
+}
+
+/* 覆盖全局 textarea 样式中的冲突项 */
+.prompt-combined .user-prompt-input {
+  margin: 0;
+  box-shadow: none;
 }
 
 textarea {
