@@ -341,16 +341,31 @@ const presets = computed(() => {
   }
 })
 
-const lcmSteps = ref(4)
-const lcmGuidance = ref(2.5)
-const lcmDenoise = ref(0.9)
-const latentScale = ref(1.5)
-const scribbleScale1 = ref(0.9)
-const cannyScale1 = ref(0.4)
-const dpmppSteps = ref(35)
-const dpmppGuidance = ref(8.0)
-const dpmppDenoise = ref(0.6)
-const scribbleScale2 = ref(0.9)
+const lcmSteps = ref(apiStore.defaults?.lcm_steps ?? 4)
+const lcmGuidance = ref(apiStore.defaults?.lcm_guidance_scale ?? 2.5)
+const lcmDenoise = ref(apiStore.defaults?.lcm_denoise ?? 0.9)
+const latentScale = ref(apiStore.defaults?.latent_scale_factor ?? 1.5)
+const scribbleScale1 = ref(apiStore.defaults?.scribble_scale_stage1 ?? 0.9)
+const cannyScale1 = ref(apiStore.defaults?.canny_scale_stage1 ?? 0.4)
+const dpmppSteps = ref(apiStore.defaults?.dpmpp_steps ?? 35)
+const dpmppGuidance = ref(apiStore.defaults?.dpmpp_guidance_scale ?? 8.0)
+const dpmppDenoise = ref(apiStore.defaults?.dpmpp_denoise ?? 0.6)
+const scribbleScale2 = ref(apiStore.defaults?.scribble_scale_stage2 ?? 0.9)
+
+// 当服务端 defaults 加载完成后，同步高级参数
+watch(() => apiStore.defaults, (defaults) => {
+  if (!defaults) return
+  if (defaults.lcm_steps !== undefined) lcmSteps.value = defaults.lcm_steps
+  if (defaults.lcm_guidance_scale !== undefined) lcmGuidance.value = defaults.lcm_guidance_scale
+  if (defaults.lcm_denoise !== undefined) lcmDenoise.value = defaults.lcm_denoise
+  if (defaults.latent_scale_factor !== undefined) latentScale.value = defaults.latent_scale_factor
+  if (defaults.scribble_scale_stage1 !== undefined) scribbleScale1.value = defaults.scribble_scale_stage1
+  if (defaults.canny_scale_stage1 !== undefined) cannyScale1.value = defaults.canny_scale_stage1
+  if (defaults.dpmpp_steps !== undefined) dpmppSteps.value = defaults.dpmpp_steps
+  if (defaults.dpmpp_guidance_scale !== undefined) dpmppGuidance.value = defaults.dpmpp_guidance_scale
+  if (defaults.dpmpp_denoise !== undefined) dpmppDenoise.value = defaults.dpmpp_denoise
+  if (defaults.scribble_scale_stage2 !== undefined) scribbleScale2.value = defaults.scribble_scale_stage2
+}, { immediate: true })
 
 watch(() => props.canvasWidth, (newVal) => {
   if (newVal !== undefined && newVal !== localWidth.value) localWidth.value = newVal
